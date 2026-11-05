@@ -4,7 +4,7 @@ import { availableBosses } from '../src/game/bosses';
 import { simFight } from './sim.test';
 
 // Run with BALANCE=1 npx vitest run tests/balance.test.ts
-describe.runIf(process.env.BALANCE)('balance (mortal bot)', () => {
+describe.runIf((globalThis as { process?: { env: Record<string, string | undefined> } }).process?.env.BALANCE)('balance (mortal bot)', () => {
   for (const boss of availableBosses()) for (const weapon of WEAPONS) it(`${boss} ${weapon}`, () => {
     const out: string[] = [];
     for (const seed of [1, 2, 3, 4, 5]) {
