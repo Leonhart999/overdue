@@ -192,6 +192,7 @@ function background(): PixBuf {
     if (Math.floor(a * 16) % 2 === 0) b.set(x, y, C.orange);
   }
   for (let x = 360; x < 600; x += 2) { b.set(x, 120, C.slate); b.set(x, 280, C.slate); }
+  decorate(b, T);
   return b;
 }
 
@@ -217,4 +218,53 @@ export function buildHubArt(): SheetSpec[] {
       ],
     },
   ];
+}
+
+/** Lived-in details for the empty living side: vending machine, desks, cables, neon strip, clutter. */
+function decorate(b: PixBuf, T: (n: string) => PixBuf): void {
+  // neon strip along the top wall face above the weapon racks (cyan tube, magenta end caps)
+  for (let x = 30; x < 262; x++) { b.set(x, 43, C.teal); b.set(x, 44, (x >> 2) % 7 === 0 ? C.white : C.cyan); b.set(x, 45, C.teal); }
+  for (const x of [29, 262]) for (let y = 42; y < 47; y++) b.set(x, y, C.magenta);
+  // vending machine against the top wall, left of the elevator
+  vending(b, 262, 30);
+  // desks with a monitor and parts along the left wall
+  b.blit(T('desk_l'), 16, 144); b.blit(T('desk_r'), 32, 144);
+  b.blit(T('crate'), 16, 176);
+  // floor cables from the bench to the terminal and up to the racks
+  cable(b, [[150, 300], [170, 306], [188, 302]], C.ink, C.indigo);
+  cable(b, [[60, 280], [44, 230], [52, 170], [40, 160]], C.ink, C.indigo);
+  // scattered parts / papers on the planks
+  const bits: [number, number, number][] = [[120, 210, C.steel], [128, 214, C.fog], [210, 180, C.pale], [214, 182, C.pale], [250, 250, C.rust], [90, 130, C.slate]];
+  for (const [x, y, c] of bits) { b.rect(x, y, 3, 2, c); b.set(x, y + 2, C.ink); }
+  // painted floor label at the exit: hazard chevrons under the elevator
+  for (let i = 0; i < 6; i++) {
+    const x = 296 + i * 8;
+    for (let k = 0; k < 4; k++) { b.set(x + k, 52 + k, C.amber); b.set(x + 7 - k, 52 + k, C.amber); }
+  }
+}
+
+function vending(b: PixBuf, x: number, y: number): void {
+  b.rect(x, y, 26, 34, C.ink);
+  b.rect(x + 1, y + 1, 24, 32, C.maroon);
+  b.rect(x + 2, y + 2, 22, 30, C.red);
+  // lit window with drinks
+  b.rect(x + 4, y + 4, 13, 20, C.night);
+  for (let r = 0; r < 4; r++) for (let c = 0; c < 3; c++) {
+    const col = [C.cyan, C.acid, C.amber, C.rose][(r + c) % 4];
+    b.rect(x + 5 + c * 4, y + 5 + r * 5, 2, 3, col);
+    b.set(x + 5 + c * 4, y + 5 + r * 5, C.white);
+  }
+  // keypad + slot
+  b.rect(x + 18, y + 5, 4, 9, C.slate);
+  for (let k = 0; k < 4; k++) b.set(x + 19 + (k % 2), y + 6 + Math.floor(k / 2) * 2, C.amber);
+  b.rect(x + 4, y + 26, 13, 3, C.ink);
+  b.hline(x + 2, x + 23, y + 2, C.rose);
+}
+
+function cable(b: PixBuf, pts: [number, number][], c: number, hi: number): void {
+  for (let i = 0; i + 1 < pts.length; i++) {
+    const [x0, y0] = pts[i], [x1, y1] = pts[i + 1];
+    b.line(x0, y0, x1, y1, c);
+    b.line(x0, y0 - 1, x1, y1 - 1, hi);
+  }
 }
