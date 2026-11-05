@@ -254,6 +254,12 @@ export class Player {
     if (this.hp <= 0 && w.state !== 'fight') return;
     // shadow
     g.ellipse(this.x, this.y, 6, 2.5, P.ink, 0.5, 'floor');
+    // ground marker: the player is always findable in busy fights (aim direction notch)
+    if (w.state === 'fight') {
+      g.ellipse(this.x, this.y + 0.5, 9, 4, COL.player, 0.12, 'floor');
+      const ax = Math.cos(this.aim), ay = Math.sin(this.aim);
+      g.line(this.x + ax * 7, this.y + 0.5 + ay * 3, this.x + ax * 11, this.y + 0.5 + ay * 5, 2, COL.player, 0.55, 'floor');
+    }
     const blink = this.invuln > 0 && Math.floor(this.invuln * 20) % 2 === 0;
     const frames = ['walkA', 'idle', 'walkB', 'idle'];
     const fr = this.moving ? frames[Math.floor(this.walkT * 9) % 4] : 'idle';
