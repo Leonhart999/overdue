@@ -15,6 +15,7 @@ export class BootScene extends Phaser.Scene {
     audio.setMuted(session.meta.muted);
     const go = () => {
       const d = session.dev;
+      if (new URLSearchParams(location.search).has('cover')) { this.scene.start('Cover'); return; }
       if (d.boss && BOSS_DEFS[d.boss as keyof typeof BOSS_DEFS]) {
         const weapon = (WEAPONS.includes(d.weapon as WeaponId) ? d.weapon : 'riveter') as WeaponId;
         const run = newRun(weapon, d.seed ?? 1);

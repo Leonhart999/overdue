@@ -6,6 +6,7 @@ import { HubScene } from './scenes/HubScene';
 import { FightScene } from './scenes/FightScene';
 import { RewardScene } from './scenes/RewardScene';
 import { ResultScene } from './scenes/ResultScene';
+import { CoverScene } from './scenes/CoverScene';
 import { session } from './scenes/session';
 import { audio } from './engine/audio';
 import { H, W } from './ui/ui';
@@ -25,7 +26,7 @@ const game = new Phaser.Game({
   input: { keyboard: true, mouse: true, touch: false },
   disableContextMenu: true,
   fps: session.dev.shot ? { target: 60, forceSetTimeOut: true } : undefined,
-  scene: [BootScene, TitleScene, HubScene, FightScene, RewardScene, ResultScene],
+  scene: [BootScene, TitleScene, HubScene, FightScene, RewardScene, ResultScene, CoverScene],
 });
 
 window.addEventListener('pointerdown', () => audio.unlock());
