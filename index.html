@@ -10,11 +10,13 @@
     #game { width: 100vw; height: 100vh; display: flex; align-items: center; justify-content: center; }
     canvas { image-rendering: pixelated; }
     .preload { font-family: 'FusionPixel'; position: absolute; left: -999px; }
+    #loading { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font: 24px 'FusionPixel', monospace; color: #e62a3e; letter-spacing: 4px; pointer-events: none; }
   </style>
 </head>
 <body>
   <div class="preload">逾期 OVERDUE 0123456789</div>
   <div id="game"></div>
+  <div id="loading">OVERDUE · 生成像素中</div>
   <script type="module" src="./src/main.ts"></script>
 </body>
 </html>

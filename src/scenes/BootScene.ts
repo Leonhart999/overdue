@@ -11,7 +11,13 @@ export class BootScene extends Phaser.Scene {
   constructor() { super('Boot'); }
 
   create(): void {
+    // let the browser paint the HTML loading label before the (synchronous) texture generation
+    this.time.delayedCall(30, () => this.boot());
+  }
+
+  private boot(): void {
     registerAllTextures(this);
+    document.getElementById('loading')?.remove();
     audio.setMuted(session.meta.muted);
     const go = () => {
       const d = session.dev;
