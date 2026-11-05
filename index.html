@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>OVERDUE</title>
+  <style>
+    @font-face { font-family: 'FusionPixel'; src: url('./fonts/fusion-pixel-12px.woff2') format('woff2'); font-display: block; }
+    html, body { margin: 0; height: 100%; background: #07060c; overflow: hidden; }
+    #game { width: 100vw; height: 100vh; display: flex; align-items: center; justify-content: center; }
+    canvas { image-rendering: pixelated; cursor: none; }
+    .preload { font-family: 'FusionPixel'; position: absolute; left: -999px; }
+  </style>
+</head>
+<body>
+  <div class="preload">逾期 OVERDUE 0123456789</div>
+  <div id="game"></div>
+  <script type="module" src="./src/main.ts"></script>
+</body>
+</html>

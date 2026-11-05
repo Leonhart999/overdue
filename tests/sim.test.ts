@@ -1,0 +1,60 @@
+import { describe, expect, it } from 'vitest';
+import { buildAllSpecs } from '../src/art';
+import { NullGfx } from '../src/engine/gfx';
+import { emptyInput } from '../src/engine/input';
+import { availableBosses, BOSS_DEFS } from '../src/game/bosses';
+import { Bot } from '../src/game/bot';
+import { newLoadout, WEAPONS, type CyberId, CYBER_SLOT, type WeaponId } from '../src/game/loadout';
+import { Player } from '../src/game/player';
+import { World } from '../src/game/world';
+
+export function simFight(boss: string, weapon: WeaponId, opts: { seed?: number; cyber?: CyberId[]; seconds?: number; god?: boolean; tier?: number } = {}) {
+  const def = BOSS_DEFS[boss as keyof typeof BOSS_DEFS]!;
+  const w = new World(def.arena, opts.tier ?? 1, opts.seed ?? 1);
+  const l = newLoadout(weapon);
+  for (const c of opts.cyber ?? []) l.cyber[CYBER_SLOT[c]] = c;
+  w.player = new Player(l, def.arena.playerSpawn.x, def.arena.playerSpawn.y);
+  if (opts.god) { w.player.maxHp = 999; w.player.hp = 999; }
+  def.arena.setup(w);
+  w.boss = def.make(w, opts.tier ?? 1);
+  w.state = 'fight';
+  const inp = emptyInput();
+  const bot = new Bot();
+  const g = new NullGfx();
+  const steps = (opts.seconds ?? 240) * 60;
+  let i = 0;
+  for (; i < steps && w.state === 'fight'; i++) {
+    bot.update(w, inp, 1 / 60);
+    w.step(1 / 60, inp);
+    if (i % 30 === 0) w.draw(g);
+  }
+  return { w, seconds: i / 60 };
+}
+
+describe('art', () => {
+  it('builds every sheet', () => {
+    const specs = buildAllSpecs();
+    expect(specs.length).toBeGreaterThan(5);
+    for (const s of specs) for (const f of s.frames) {
+      expect(f.buf.w).toBe(s.frameW);
+      expect(f.buf.h).toBe(s.frameH);
+    }
+  });
+});
+
+for (const boss of availableBosses()) describe(`${boss} sim`, () => {
+  for (const weapon of WEAPONS) {
+    it(`bot with ${weapon} fights without crashing`, () => {
+      const { w, seconds } = simFight(boss, weapon, { god: true, seconds: 300 });
+      const dealt = Object.values(w.stats.damageBySrc).reduce((a, b) => a + b, 0) + w.stats.envDamage;
+      console.log(boss, weapon, `t=${seconds.toFixed(0)}s`, `boss ${Math.round(w.boss!.hp)}/${w.boss!.maxHp}`, `phase ${w.boss!.phase}`,
+        `hits ${w.stats.hitsTaken}`, `env ${Math.round(w.stats.envDamage)}`, `staggers ${w.stats.staggers}`, JSON.stringify(Object.fromEntries(Object.entries(w.stats.damageBySrc).map(([k, v]) => [k, Math.round(v)]))));
+      expect(dealt).toBeGreaterThan(200);
+    });
+  }
+  it('cyberware variants run', () => {
+    for (const cy of [['legs_leap', 'arm_grapple'], ['legs_blink', 'arm_fist', 'core_plating', 'head_reflex'], ['legs_slide', 'arm_jack', 'core_capacitor', 'head_ballistic']] as CyberId[][]) {
+      for (const weapon of WEAPONS) simFight(boss, weapon, { god: true, seconds: 60, cyber: cy, seed: 3 });
+    }
+  });
+});
