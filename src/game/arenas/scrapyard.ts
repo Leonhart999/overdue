@@ -165,7 +165,17 @@ export class Crane {
     for (const inc of this.incoming) g.ring(inc.x, inc.y, 10 * (inc.t / 0.8) + 4, 1, P.orange, 0.8);
   }
 
-  drawTop(g: Gfx): void {
+  /** Hack target standing in for the crane (its glyph timer drives the hacked look). */
+  handle: Body | null = null;
+
+  drawTop(g: Gfx, w: World): void {
+    const hacked = !!this.handle && this.handle.glyphUntil > w.time;
+    if (hacked) g.glyphs(true);
+    this.drawRig(g);
+    if (hacked) g.glyphs(false);
+  }
+
+  private drawRig(g: Gfx): void {
     // gantry bridge across the yard at the trolley's depth
     const by = this.y - 104;
     // girder bridge: dark beam, lit top rail, cross bracing
@@ -194,7 +204,7 @@ export const scrapyard: Arena = {
   setup(w: World) {
     const crane = new Crane();
     w.objects.push(crane);
-    w.add(new CraneHandle(crane));
+    crane.handle = w.add(new CraneHandle(crane));
     w.add(new Lever(30, 196, (ww) => crane.pull(ww), 1));
     w.add(new Lever(610, 196, (ww) => crane.pull(ww), -1));
     for (const [x, y] of [[150, 146], [490, 146], [150, 262], [490, 262]]) w.add(new Pillar(x, y));

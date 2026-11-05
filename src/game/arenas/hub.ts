@@ -72,6 +72,7 @@ class Dummy extends Body {
   update(w: World, dt: number): void {
     if (this.flash > 0) this.flash -= dt;
     if (this.hitT > 0) this.hitT -= dt;
+    if (this.jamT > 0) this.jamT -= dt;
     this.wob *= Math.exp(-6 * dt);
     if (this.staggerT > 0) {
       this.staggerT -= dt;
@@ -101,6 +102,10 @@ class Dummy extends Body {
     }
     return dmg;
   }
+  private jamT = 0;
+  /** Jack arm on the dummy: no boss to slow, so it just shows the hack running. */
+  onHack(w: World): void { this.jamT = 4; w.fx.label(this.x, this.y - 40, '干扰 4 秒', P.acid, 1); }
+
   private dps(w: World): number {
     if (!this.log.length) return 0;
     const span = Math.max(1, Math.min(3, w.time - this.log[0].t));

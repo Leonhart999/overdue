@@ -493,7 +493,7 @@ class JackArm extends Arm {
       if (c.b.dead) { this.chan = null; return; }
       if (c.t <= 0) {
         this.chan = null;
-        if (c.b.team === 'enemy') w.boss?.jam(w, 4);
+        if (c.b.team === 'enemy' && w.boss) w.boss.jam(w, 4);
         else c.b.onHack?.(w);
         w.fx.burst(c.b.hx, c.b.hy, 14, P.acid, 80, 0.4, 1);
         w.fx.label(c.b.hx, c.b.hy - 10, '已骇入', P.acid);
