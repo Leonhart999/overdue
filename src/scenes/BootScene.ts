@@ -26,7 +26,7 @@ export class BootScene extends Phaser.Scene {
         this.scene.start('Fight', { boss: p.boss, tier: d.tier || 1 });
         return;
       }
-      this.scene.start('Title');
+      this.scene.start(d.hub ? 'Hub' : 'Title');
     };
     const fonts = (document as Document & { fonts?: FontFaceSet }).fonts;
     if (fonts) {
