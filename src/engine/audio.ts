@@ -42,6 +42,9 @@ class AudioEngine {
   private loops = new Map<string, { stop: () => void }>();
   volume = 0.7;
   musicVolume = 0.35;
+  /** Player setting multipliers (pause menu). */
+  musicScale = 1;
+  sfxScale = 1;
   muted = false;
 
   /** Must be called from a user gesture (first click / key). Safe to call repeatedly. */
@@ -61,9 +64,10 @@ class AudioEngine {
     comp.ratio.value = 4;
     this.master.connect(comp).connect(ctx.destination);
     this.sfxBus = ctx.createGain();
+    this.sfxBus.gain.value = this.sfxScale;
     this.sfxBus.connect(this.master);
     this.musicBus = ctx.createGain();
-    this.musicBus.gain.value = this.musicVolume;
+    this.musicBus.gain.value = this.musicVolume * this.musicScale;
     this.musicBus.connect(this.master);
     const len = ctx.sampleRate * 1.5;
     this.noise = ctx.createBuffer(1, len, ctx.sampleRate);
@@ -253,7 +257,12 @@ class AudioEngine {
 
   setMusicVolume(v: number): void {
     this.musicVolume = v;
-    if (this.ctx) this.musicBus.gain.setTargetAtTime(v, this.ctx.currentTime, 0.2);
+    if (this.ctx) this.musicBus.gain.setTargetAtTime(v * this.musicScale, this.ctx.currentTime, 0.2);
+  }
+
+  setSfxVolume(v: number): void {
+    this.sfxScale = v;
+    if (this.ctx) this.sfxBus.gain.setTargetAtTime(v, this.ctx.currentTime, 0.05);
   }
 
   /** Current position in beats since the track started (null when no music). */

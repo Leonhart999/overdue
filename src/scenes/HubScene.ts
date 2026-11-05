@@ -15,6 +15,7 @@ import { Player } from '../game/player';
 import { newRun, nextFightParams, saveMeta } from '../game/run';
 import { World } from '../game/world';
 import { drawHud } from './hud';
+import { applySettings, PauseMenu } from './pauseMenu';
 import { session } from './session';
 import { fmt, goto, H, W } from '../ui/ui';
 
@@ -48,10 +49,10 @@ export class HubScene extends Phaser.Scene {
   private overlay: Overlay = null;
   private keys: string[] = [];
   private row = 0;
-  private menuRow = 0;
   private leaving = false;
   private musicOn = false;
   private loadout!: Loadout;
+  private pause!: PauseMenu;
 
   constructor() { super('Hub'); }
 
@@ -84,6 +85,10 @@ export class HubScene extends Phaser.Scene {
     w.state = 'fight';
     w.input = this.kbm.state;
     this.world = w;
+    applySettings(w.fx);
+    this.pause = new PauseMenu(this, '回到标题', () => { this.overlay = null; audio.setMusicVolume(0.22); }, () => {
+      this.overlay = null; this.leaving = true; goto(this, 'Title');
+    }, w.fx);
 
     this.input.keyboard!.on('keydown', (ev: KeyboardEvent) => this.keys.push(ev.code));
     this.input.on('pointerdown', (p: Phaser.Input.Pointer) => this.keys.push(p.rightButtonDown() ? 'MouseRight' : 'MouseLeft'));
@@ -123,7 +128,6 @@ export class HubScene extends Phaser.Scene {
     this.overlay = o;
     this.keys = [];
     this.row = 0;
-    this.menuRow = 0;
     audio.loop('arc', false);
   }
 
@@ -156,11 +160,14 @@ export class HubScene extends Phaser.Scene {
     this.kbm.poll(this.cameras.main);
     if (!this.musicOn && audio.ctx) { this.musicOn = true; audio.startMusic(HUB_MUSIC); audio.setMusicVolume(0.22); }
 
-    if (this.overlay) {
+    if (this.overlay === 'menu') {
+      this.pause.update(inp.ay - this.cameras.main.scrollY);
+      clearEdges(inp);
+    } else if (this.overlay) {
       this.handleOverlay();
       clearEdges(inp);
     } else {
-      if (inp.pausePressed) { inp.pausePressed = false; this.open('menu'); }
+      if (inp.pausePressed) { inp.pausePressed = false; this.open('menu'); this.pause.show(); }
       this.keys = [];
       this.acc += Math.min(delta, 100) / 1000;
       let n = 0;
@@ -186,20 +193,10 @@ export class HubScene extends Phaser.Scene {
         else if (close) this.overlay = null;
       } else if (this.overlay === 'records') {
         if (close || k === 'Enter' || k === 'Space' || k === 'MouseLeft') this.overlay = null;
-      } else if (this.overlay === 'menu') {
-        if (k === 'ArrowUp' || k === 'KeyW' || k === 'ArrowDown' || k === 'KeyS') { this.menuRow = 1 - this.menuRow; audio.sfx('ui'); }
-        else if (k === 'Enter' || k === 'Space' || k === 'MouseLeft') {
-          audio.sfx('uiConfirm');
-          if (this.menuRow === 0) this.overlay = null;
-          else { this.overlay = null; this.leaving = true; goto(this, 'Title'); }
-        } else if (k === 'Escape' || k === 'KeyP') this.overlay = null;
       }
     }
     if (this.overlay === 'bench') {
       for (let i = 0; i < 4; i++) if (my > 92 + i * 52 && my < 92 + i * 52 + 46 && inp.ax > 90 && inp.ax < 550) this.row = i;
-    } else if (this.overlay === 'menu') {
-      if (my > 166 && my < 184) this.menuRow = 0;
-      if (my > 188 && my < 206) this.menuRow = 1;
     }
   }
 
@@ -217,7 +214,7 @@ export class HubScene extends Phaser.Scene {
     w.fx.drawFlash(g, W, H);
     if (this.overlay === 'bench') this.drawBench();
     if (this.overlay === 'records') this.drawRecords();
-    if (this.overlay === 'menu') this.drawMenu();
+    if (this.overlay === 'menu') this.pause.draw(g);
     g.end();
   }
 
@@ -270,13 +267,4 @@ export class HubScene extends Phaser.Scene {
     g.text('任意键关闭', W / 2, 276, { layer: 'ui', align: 'center', color: P.slate });
   }
 
-  private drawMenu(): void {
-    const g = this.gfx;
-    g.rect(0, 0, W, H, P.ink, 0.7, 'ui');
-    g.text('暂停', W / 2, 130, { layer: 'ui', align: 'center', scale: 2, color: P.white });
-    ['继续', '回到标题'].forEach((s, i) => {
-      const f = i === this.menuRow;
-      g.text((f ? '> ' : '  ') + s, W / 2, 170 + i * 22, { layer: 'ui', align: 'center', color: f ? P.cyan : P.fog });
-    });
-  }
 }

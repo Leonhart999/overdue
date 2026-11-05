@@ -12,6 +12,7 @@ import { Player } from '../game/player';
 import { finishFight, isLastFight, saveMeta, type FightRecord } from '../game/run';
 import { World } from '../game/world';
 import { drawHud } from './hud';
+import { applySettings, PauseMenu } from './pauseMenu';
 import { session } from './session';
 import { goto, H, W } from '../ui/ui';
 
@@ -31,7 +32,7 @@ export class FightScene extends Phaser.Scene {
   private bot: Bot | null = null;
   private acc = 0;
   private paused = false;
-  private pauseFocus = 0;
+  private pause!: PauseMenu;
   private introT = 0;
   private ended = false;
   private uiCam!: Phaser.Cameras.Scene2D.Camera;
@@ -69,6 +70,10 @@ export class FightScene extends Phaser.Scene {
     w.input = this.kbm.state;
     this.world = w;
     this.warmGlyphs();
+    applySettings(w.fx);
+    this.pause = new PauseMenu(this, UI.abandon, () => { this.paused = false; audio.setMusicVolume(0.3); }, () => {
+      this.paused = false; this.ended = true; session.run = null; goto(this, 'Hub');
+    }, w.fx);
     this.musicOn = false;
     this.input.setDefaultCursor('none');
     main.fadeIn(250, 5, 4, 10);
@@ -110,11 +115,10 @@ export class FightScene extends Phaser.Scene {
     }
     if (inp.pausePressed && w.state === 'fight') {
       inp.pausePressed = false;
-      this.paused = !this.paused;
-      audio.setMusicVolume(this.paused ? 0.1 : 0.3);
-      audio.loop('arc', false);
+      this.paused = true;
+      this.pause.show();
     }
-    if (this.paused) { this.updatePause(inp); this.render(); return; }
+    if (this.paused) { this.pause.update(inp.ay - this.cameras.main.scrollY); clearEdges(inp); this.render(); return; }
 
     // intro card: the boss and player wait
     if (w.state === 'intro') {
@@ -148,7 +152,7 @@ export class FightScene extends Phaser.Scene {
     w.fx.drawFlash(g, W, H);
     if (w.state === 'intro') this.drawIntro();
     this.drawHint();
-    if (this.paused) this.drawPause();
+    if (this.paused) this.pause.draw(this.gfx, UI.controls);
     if (w.state === 'won' || w.state === 'lost') this.drawEndBanner();
     g.end();
   }
@@ -178,36 +182,6 @@ export class FightScene extends Phaser.Scene {
     const a = Math.min(1, w.stateT * 2, (9 - w.stateT) * 1.5);
     this.gfx.rect(0, 340, W, 20, P.ink, 0.7 * a, 'ui');
     this.gfx.text(hint, W / 2, 344, { layer: 'ui', align: 'center', color: P.amber, alpha: a });
-  }
-
-  private updatePause(inp: InputState): void {
-    if (inp.dashPressed || inp.armPressed) { /* swallow */ }
-    const kb = this.input.keyboard!;
-    const up = Phaser.Input.Keyboard.JustDown(kb.addKey('UP')) || Phaser.Input.Keyboard.JustDown(kb.addKey('W'));
-    const down = Phaser.Input.Keyboard.JustDown(kb.addKey('DOWN')) || Phaser.Input.Keyboard.JustDown(kb.addKey('S'));
-    const ok = Phaser.Input.Keyboard.JustDown(kb.addKey('ENTER')) || inp.interactPressed || inp.firePressed;
-    if (up || down) { this.pauseFocus = 1 - this.pauseFocus; audio.sfx('ui'); }
-    // mouse hover
-    const py = inp.ay - this.cameras.main.scrollY;
-    if (py > 170 && py < 186) this.pauseFocus = 0;
-    if (py > 192 && py < 208) this.pauseFocus = 1;
-    if (ok) {
-      audio.sfx('uiConfirm');
-      if (this.pauseFocus === 0) { this.paused = false; audio.setMusicVolume(0.3); }
-      else { this.ended = true; session.run = null; goto(this, 'Hub'); }
-    }
-    clearEdges(inp);
-  }
-
-  private drawPause(): void {
-    const g = this.gfx;
-    g.rect(0, 0, W, H, P.ink, 0.7, 'ui');
-    g.text(UI.pause, W / 2, 130, { layer: 'ui', align: 'center', scale: 2, color: P.white });
-    [UI.resume, UI.abandon].forEach((s, i) => {
-      const f = i === this.pauseFocus;
-      g.text((f ? '> ' : '  ') + s, W / 2, 172 + i * 22, { layer: 'ui', align: 'center', color: f ? P.cyan : P.fog });
-    });
-    g.text(UI.controls, W / 2, 330, { layer: 'ui', align: 'center', color: P.slate });
   }
 
   private drawEndBanner(): void {

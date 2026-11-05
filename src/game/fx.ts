@@ -118,7 +118,12 @@ export class Fx {
     this.ghosts.push({ key, frame, x, y, o, t: 0, dur });
   }
 
+  /** Screen-shake setting (0 = off). */
+  shakeScale = 1;
+
   shake(px: number, dur = 0.15): void {
+    px *= this.shakeScale;
+    if (px <= 0) return;
     if (px >= this.shakeAmt * (this.shakeT > 0 ? 1 : 0)) { this.shakeAmt = px; this.shakeT = dur; }
   }
 

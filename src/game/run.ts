@@ -154,6 +154,7 @@ export interface Meta {
   bestRun: Partial<Record<WeaponId, number>>;
   muted: boolean;
   lastWeapon?: WeaponId;
+  settings?: { shake: boolean; numbers: boolean; music: number; sfx: number };
 }
 
 const META_KEY = 'overdue.meta.v1';
