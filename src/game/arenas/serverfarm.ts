@@ -395,6 +395,18 @@ export const serverfarm: Arena = {
       if (p.moving && w.rng.chance(dt * 8)) w.fx.burst(p.x + w.rng.range(-3, 3), p.y, 1, P.teal, 25, 0.35, 1);
     }
   },
+  botHint(w: World) {
+    const grid = farmOf(w);
+    const p = w.player;
+    if (!grid || grid.state === 'idle' || !grid.inWater(p.x, p.y)) return null;
+    let best: { x: number; y: number } | null = null, bd = Infinity;
+    for (const r of FARM.dry) {
+      const x = Math.max(r.x + 6, Math.min(r.x + r.w - 6, p.x)), y = Math.max(r.y + 8, Math.min(r.y + r.h - 4, p.y));
+      const d = (x - p.x) ** 2 + (y - p.y) ** 2;
+      if (d < bd) { bd = d; best = { x, y }; }
+    }
+    return best ? { ...best, jump: grid.state === 'live' } : null;
+  },
   drawFloor(g: Gfx, w: World) {
     // green data glow drifting under the water, ceiling lamps
     for (let i = 0; i < 6; i++) {

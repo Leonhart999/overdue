@@ -34,6 +34,11 @@ export interface Arena {
   drawFloor?(g: Gfx, w: World): void;
   /** Drawn above everything in the world (overhead crane, lights). */
   drawTop?(g: Gfx, w: World): void;
+  /**
+   * Autopilot only: a safe spot the bot should run to right now (e.g. dry grating before the
+   * water goes live), and whether to jump/dash when it cannot make it. Gameplay never calls this.
+   */
+  botHint?(w: World): { x: number; y: number; jump: boolean } | null;
 }
 
 export interface HitPlayerOpts {

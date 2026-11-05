@@ -45,6 +45,13 @@ export class Bot {
       if (ahead < 10) { danger = true; break; }
     }
     if (danger) s.dashPressed = true;
+    // arena-specific escape (dry ground before the water goes live...)
+    const hint = w.arena.botHint?.(w);
+    if (hint) {
+      [mx, my] = norm(hint.x - p.x, hint.y - p.y);
+      mx *= 3; my *= 3;
+      if (hint.jump) s.dashPressed = true;
+    }
     // stay inside the arena
     const bnd = w.bounds;
     if (p.x < bnd.x + 30) mx += 1;
