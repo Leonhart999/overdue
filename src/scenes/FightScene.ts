@@ -175,7 +175,7 @@ export class FightScene extends Phaser.Scene {
     if (ok) {
       audio.sfx('uiConfirm');
       if (this.pauseFocus === 0) { this.paused = false; audio.setMusicVolume(0.3); }
-      else { this.ended = true; session.run = null; goto(this, 'Title'); }
+      else { this.ended = true; session.run = null; goto(this, 'Hub'); }
     }
     clearEdges(inp);
   }

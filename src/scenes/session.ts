@@ -1,4 +1,5 @@
 /** Global session: the current run, meta progress and dev flags from the URL. */
+import type { CyberId, Slot } from '../game/loadout';
 import { loadMeta, type Meta, type RunState } from '../game/run';
 
 const q = new URLSearchParams(typeof location !== 'undefined' ? location.search : '');
@@ -6,8 +7,11 @@ const q = new URLSearchParams(typeof location !== 'undefined' ? location.search 
 export const session: {
   run: RunState | null;
   meta: Meta;
+  /** Practice cyberware chosen on the hub bench (hub only). */
+  hubCyber: Partial<Record<Slot, CyberId>>;
   dev: {
     boss: string | null;
+    hub: boolean;
     weapon: string | null;
     tier: number;
     cyber: string[];
@@ -22,8 +26,10 @@ export const session: {
 } = {
   run: null,
   meta: loadMeta(),
+  hubCyber: {},
   dev: {
     boss: q.get('boss'),
+    hub: q.has('hub'),
     weapon: q.get('weapon'),
     tier: Number(q.get('tier') ?? 1),
     cyber: (q.get('cyber') ?? '').split(',').filter(Boolean),

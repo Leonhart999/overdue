@@ -58,3 +58,28 @@ for (const boss of availableBosses()) describe(`${boss} sim`, () => {
     }
   });
 });
+
+describe('hub', () => {
+  it('runs with every weapon and survives the turret', async () => {
+    const { makeHubArena } = await import('../src/game/arenas/hub');
+    for (const weapon of WEAPONS) {
+      let departed = false;
+      const arena = makeHubArena({ current: () => weapon, swapWeapon: () => {}, openBench: () => {}, openRecords: () => {}, depart: () => { departed = true; } });
+      const w = new World(arena, 1, 5);
+      w.player = new Player(newLoadout(weapon), 470, 200);
+      arena.setup(w);
+      w.state = 'fight';
+      const turret = w.bodies.find((b) => b.interactLabel === '开启练习炮台')!;
+      turret.onInteract!(w);
+      const inp = emptyInput();
+      inp.ax = 510; inp.ay = 180;
+      for (let i = 0; i < 60 * 20; i++) {
+        inp.fire = true; inp.firePressed = i % 20 === 0; inp.altPressed = i % 90 === 0; inp.alt = i % 90 < 20;
+        w.step(1 / 60, inp);
+      }
+      expect(w.state).toBe('fight');
+      expect(w.player.hp).toBeGreaterThan(0);
+      expect(departed).toBe(false);
+    }
+  });
+});

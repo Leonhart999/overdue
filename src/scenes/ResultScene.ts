@@ -4,8 +4,7 @@ import { P } from '../engine/gfx';
 import { BOSS_TEXT, CYBER_TEXT, MOD_TEXT, UI, WEAPON_TEXT } from '../data/text';
 import { SLOTS } from '../game/loadout';
 import { session } from './session';
-import { fmt } from './SelectScene';
-import { goto, H, Menu, text, W } from '../ui/ui';
+import { fmt, goto, H, Menu, text, W } from '../ui/ui';
 
 export class ResultScene extends Phaser.Scene {
   private won = false;
@@ -33,9 +32,9 @@ export class ResultScene extends Phaser.Scene {
       const total = run.records.reduce((s, r) => s + r.time, 0);
       text(this, W / 2, 156 + run.records.length * 20 + 16, `总用时 ${fmt(total)}`, { align: 'center', color: P.fog });
     }
-    const t = text(this, W / 2, 300, `> ${UI.backToTitle} <`, { align: 'center', color: P.cyan });
+    const t = text(this, W / 2, 300, '> 回到据点 <', { align: 'center', color: P.cyan });
     const menu = new Menu(this, () => {});
-    menu.set([{ x: W / 2 - 80, y: 294, w: 160, h: 24, onSelect: () => { session.run = null; goto(this, 'Title'); } }]);
+    menu.set([{ x: W / 2 - 80, y: 294, w: 160, h: 24, onSelect: () => { session.run = null; goto(this, 'Hub'); } }]);
     void t;
   }
 }

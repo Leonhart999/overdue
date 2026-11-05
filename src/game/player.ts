@@ -58,6 +58,8 @@ export class Player {
   rangeMul = 1;
   overclockT = 0;
   lastHurtAt = -100;
+  /** Hub: hits still land but never drop below 1 heart. */
+  immortal = false;
 
   readonly weapon: Weapon;
   readonly legs: Legs;
@@ -192,7 +194,7 @@ export class Player {
       w.fx.label(this.x, this.y - 18, '护盾', COL.player);
       return 'hit';
     }
-    this.hp = Math.max(0, this.hp - dmg);
+    this.hp = Math.max(this.immortal ? 1 : 0, this.hp - dmg);
     this.invuln = 1.0;
     this.hurtT = 0.3;
     w.hitstop = Math.max(w.hitstop, 0.07);

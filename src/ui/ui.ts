@@ -121,6 +121,11 @@ export class Menu {
   }
 }
 
+export function fmt(s: number): string {
+  const m = Math.floor(s / 60), r = Math.floor(s % 60);
+  return `${m}:${String(r).padStart(2, '0')}`;
+}
+
 /** Fade the camera out, then start another scene. */
 export function goto(scene: Phaser.Scene, key: string, data?: object, ms = 220): void {
   scene.cameras.main.fadeOut(ms, 5, 4, 10);

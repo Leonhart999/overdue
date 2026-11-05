@@ -149,6 +149,7 @@ export interface Meta {
   bossKills: Partial<Record<BossId, number>>;
   bestRun: Partial<Record<WeaponId, number>>;
   muted: boolean;
+  lastWeapon?: WeaponId;
 }
 
 const META_KEY = 'overdue.meta.v1';

@@ -86,7 +86,7 @@ export const UI = {
   special: '右键',
   pause: '暂停',
   resume: '继续',
-  abandon: '放弃本局',
+  abandon: '放弃本局（回到据点）',
   victory: '清算完成',
   defeat: '被收回',
   chooseReward: '选择一项',
