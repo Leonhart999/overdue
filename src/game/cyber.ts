@@ -505,6 +505,8 @@ class JackArm extends Arm {
     if (!best) { w.fx.label(p.x, p.y - 18, '无目标', P.fog, 0.5); w.sfx('click'); return; }
     this.chan = { b: best, t: 0.3 };
     this.cd = this.maxCd;
+    // glyph look: devices 1.2 s after the hack lands; boss parts hand over to the boss-wide jam look
+    best.glyphUntil = w.time + 0.3 + (best.team === 'enemy' ? 0.7 : 1.2);
     w.sfx('hack');
   }
   draw(g: Gfx, w: World, p: Player): void {

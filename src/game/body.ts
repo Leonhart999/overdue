@@ -48,6 +48,8 @@ export abstract class Body {
   grapple: 'pull' | 'anchor' | 'none' = 'none';
   /** Hit flash timer (seconds). */
   flash = 0;
+  /** World time until which it draws as glyph art (jack arm hack). Visual only. */
+  glyphUntil = -1;
 
   get hx(): number { return this.x; }
   get hy(): number { return this.y - this.hz; }

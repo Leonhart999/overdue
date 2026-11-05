@@ -1,5 +1,6 @@
 /** Phaser implementation of the immediate-mode Gfx interface (pooled images, texts, shape layers). */
 import Phaser from 'phaser';
+import { glyphSheet, type GlyphRect } from '../art/glyphs';
 import type { Gfx, ImgOpts, Layer, TextOpts } from './gfx';
 
 const DEPTH = {
@@ -19,6 +20,12 @@ const DEPTH = {
 
 const hex = (c: number) => '#' + c.toString(16).padStart(6, '0');
 
+/**
+ * `${key}|${flip}` -> texture keys of its glyph variants (null: texture cannot be converted).
+ * Module-level because the texture manager outlives scenes (and their PhaserGfx).
+ */
+const glyphTex = new Map<string, string[] | null>();
+
 export class PhaserGfx implements Gfx {
   private imgs: Phaser.GameObjects.Image[] = [];
   private nImg = 0;
@@ -29,6 +36,7 @@ export class PhaserGfx implements Gfx {
   private dark: Phaser.GameObjects.RenderTexture;
   private hole: Phaser.GameObjects.Image;
   private darkUsed = false;
+  private glyphOn = false;
 
   constructor(private scene: Phaser.Scene, private mainCam: Phaser.Cameras.Scene2D.Camera, private uiCam: Phaser.Cameras.Scene2D.Camera) {
     const mk = (depth: number, ui = false) => {
@@ -71,12 +79,17 @@ export class PhaserGfx implements Gfx {
       this.imgs.push(im);
     }
     this.nImg++;
-    if (im.texture.key !== key || im.frame.name !== String(frame)) im.setTexture(key, frame);
     const layer = o.layer ?? 'world';
+    let flipX = !!o.flipX;
+    if (this.glyphOn && (layer === 'world' || layer === 'floor')) {
+      const gk = this.glyphKey(key, flipX);
+      if (gk && this.scene.textures.get(gk).has(String(frame))) { key = gk; flipX = false; }
+    }
+    if (im.texture.key !== key || im.frame.name !== String(frame)) im.setTexture(key, frame);
     im.setVisible(true);
     im.setPosition(Math.round(x), Math.round(y));
     im.setOrigin(o.ox ?? 0.5, o.oy ?? 1);
-    im.setFlip(!!o.flipX, !!o.flipY);
+    im.setFlip(flipX, !!o.flipY);
     im.setRotation(o.rot ?? 0);
     const s = o.scale ?? 1;
     im.setScale((o.sx ?? 1) * s, (o.sy ?? 1) * s);
@@ -173,6 +186,58 @@ export class PhaserGfx implements Gfx {
       }
     } else ps.push({ x, y });
     g.fillPoints(ps, true);
+  }
+
+  glyphs(on: boolean): void { this.glyphOn = on; }
+
+  /** Current glyph variant of a texture (variants cycle every 100 ms), built on first use. */
+  private glyphKey(key: string, flip: boolean): string | null {
+    const id = `${key}|${flip ? 1 : 0}`;
+    let keys = glyphTex.get(id);
+    if (keys === undefined) {
+      keys = this.buildGlyphs(key, flip);
+      glyphTex.set(id, keys);
+    }
+    return keys ? keys[Math.floor(this.scene.time.now / 100) % keys.length] : null;
+  }
+
+  /** Convert a whole sheet into glyph-art textures with the same frame names and rects. */
+  private buildGlyphs(key: string, flip: boolean): string[] | null {
+    const tm = this.scene.textures;
+    if (!tm.exists(key)) return null;
+    const tex = tm.get(key);
+    const img = tex.getSourceImage() as HTMLCanvasElement | HTMLImageElement;
+    const w = img.width, h = img.height;
+    if (!w || !h) return null;
+    const read = document.createElement('canvas');
+    read.width = w;
+    read.height = h;
+    const rctx = read.getContext('2d', { willReadFrequently: true })!;
+    rctx.drawImage(img, 0, 0);
+    const src = rctx.getImageData(0, 0, w, h).data;
+    const frames = Object.entries(tex.frames as Record<string, Phaser.Textures.Frame>).filter(([n]) => n !== '__BASE');
+    const rects: GlyphRect[] = [];
+    const seen = new Set<string>();
+    for (const [, f] of frames) {
+      const k = `${f.cutX},${f.cutY},${f.cutWidth},${f.cutHeight}`;
+      if (seen.has(k)) continue;
+      seen.add(k);
+      rects.push({ x: f.cutX, y: f.cutY, w: f.cutWidth, h: f.cutHeight });
+    }
+    if (!rects.length) rects.push({ x: 0, y: 0, w, h });
+    return glyphSheet(src, w, h, rects, flip).map((px, v) => {
+      const gk = `${key}~glyph${flip ? 'f' : ''}${v}`;
+      const c = document.createElement('canvas');
+      c.width = w;
+      c.height = h;
+      const ctx = c.getContext('2d')!;
+      const data = ctx.createImageData(w, h);
+      data.data.set(px);
+      ctx.putImageData(data, 0, 0);
+      const t = tm.addCanvas(gk, c)!;
+      for (const [n, f] of frames) t.add(n, 0, f.cutX, f.cutY, f.cutWidth, f.cutHeight);
+      return gk;
+    });
   }
 
   darkness(alpha: number, holes: { x: number; y: number; r: number }[]): void {

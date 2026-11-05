@@ -391,6 +391,12 @@ export class World {
   }
 
   // ------------------------------------------------------------------ drawing
+  /** Seconds of glyph look left: the body's own hack timer, or the whole boss side while jammed. null = the boss. */
+  glyphLeft(b: Body | null): number {
+    const jam = this.boss && !this.boss.dying && (!b || b.team === 'enemy') ? this.boss.jamT : 0;
+    return Math.max(b ? b.glyphUntil - this.time : 0, jam);
+  }
+
   draw(g: Gfx): void {
     const [sx, sy] = this.fx.shakeOffset();
     g.img(this.arena.bg, 0, sx * 0, sy * 0, { layer: 'floor', ox: 0, oy: 0 });
@@ -398,8 +404,20 @@ export class World {
     for (const z of this.zones) z.draw(g);
     for (const h of this.hazards) h.draw(g);
     for (const o of this.objects) o.draw?.(g, this);
-    for (const b of this.bodies) b.draw(g, this);
-    this.boss?.draw(g, this);
+    for (const b of this.bodies) {
+      const on = glyphVisible(this.glyphLeft(b));
+      if (on) g.glyphs(true);
+      b.draw(g, this);
+      if (on) g.glyphs(false);
+    }
+    if (this.boss) {
+      let left = this.glyphLeft(null);
+      for (const p of this.boss.parts) left = Math.max(left, p.glyphUntil - this.time);
+      const on = glyphVisible(left);
+      if (on) g.glyphs(true);
+      this.boss.draw(g, this);
+      if (on) g.glyphs(false);
+    }
     this.player.draw(g, this);
     for (const b of this.bullets) b.draw(g, this);
     for (const c of this.cables) g.line(c.x1, c.y1, c.x2, c.y2, 1, P.fog, 1, 'top');
@@ -407,6 +425,11 @@ export class World {
     for (const o of this.objects) o.drawTop?.(g, this);
     this.fx.draw(g);
   }
+}
+
+/** Glyph look is solid, then blinks during its last 0.6 s so the player sees the hack running out. */
+function glyphVisible(left: number): boolean {
+  return left > 0 && (left > 0.6 || Math.floor(left * 10) % 2 === 0);
 }
 
 function zonesTouch(a: Zone, b: Zone): boolean {

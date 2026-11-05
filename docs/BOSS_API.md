@@ -56,6 +56,7 @@ class Lux extends Boss {
 - Boss sprite: 3/4 top-down, origin bottom centre. Sheet frames are addressed by name.
 - Arena background: 640x360 `PixBuf`, walls baked in. The HUD covers the top ~34 px, so keep `bounds.y >= 48`.
 - Glows go on the `light` layer at runtime (`g.circle(..., 'light')`), not into the sprite.
+- Hack look: while the boss is jammed (jack arm), `World.draw` turns the boss's and every enemy-team body's `floor`/`world` images into glyph art (`src/art/glyphs.ts`). Shapes, text and `top`/`light` images are untouched, so keep telegraphs as shapes and status marks (stagger stars) on `top`.
 
 ## Testing
 

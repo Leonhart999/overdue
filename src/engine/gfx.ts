@@ -60,6 +60,8 @@ export interface Gfx {
   sector(x: number, y: number, r: number, a0: number, a1: number, color: number, alpha?: number, layer?: Layer, inner?: number): void;
   /** Full-screen darkness with circular holes (blackouts). alpha 0 = off. */
   darkness(alpha: number, holes: { x: number; y: number; r: number }[]): void;
+  /** While on, floor/world images are drawn as glyph art (hacked look). Shapes, text and other layers are unchanged. */
+  glyphs(on: boolean): void;
 }
 
 /** Palette colours as 0xRRGGBB numbers, by palette name. */
@@ -93,4 +95,5 @@ export class NullGfx implements Gfx {
   poly(): void {}
   sector(): void {}
   darkness(): void {}
+  glyphs(): void {}
 }
