@@ -5,6 +5,8 @@
  *   ?doc=1             only the x2 dark + mid rows and the x1 strip (used for docs/standees.png)
  *   ?only=a,b          restrict to these frame names
  *   ?zoom=x,y,w,h      only x4 crops of that rectangle of each frame
+ *   ?sprite=1          Echo's in-fight sprite (pc_echo) vs the old ow_echo on the four arena floors,
+ *                      plus the Echo standees (used for docs/echo_sprite.png)
  * Sets `window.__standeeReady = true` when drawn (for headless screenshots).
  */
 import { C, PALETTE_RGB } from './palette';
@@ -25,6 +27,25 @@ function paint(ctx: CanvasRenderingContext2D, b: PixBuf, x0: number, y0: number,
     ctx.fillStyle = hex(c);
     ctx.fillRect(x0 + x * s, y0 + y * s, s, s);
   }
+}
+
+/** A row of frames drawn over a crop of an arena floor (scaled like the frames). */
+function rowOn(title: string, frames: Frame[], s: number, floor: PixBuf, fx: number, fy: number): void {
+  const pad = 4;
+  const w = frames.reduce((a, f) => a + f.buf.w + pad, pad);
+  const h = Math.max(...frames.map((f) => f.buf.h)) + pad * 2;
+  const cv = document.createElement('canvas');
+  cv.width = w * s; cv.height = h * s + 16;
+  const ctx = cv.getContext('2d')!;
+  ctx.fillStyle = hex(C.ink);
+  ctx.fillRect(0, 0, cv.width, cv.height);
+  ctx.fillStyle = '#9097c0';
+  ctx.font = '11px monospace';
+  ctx.fillText(title, 4, 12);
+  paint(ctx, floor.crop(fx, fy, w, h), 0, 16, s);
+  let x = pad;
+  for (const f of frames) { paint(ctx, f.buf, x * s, 16 + pad * s, s); x += f.buf.w + pad; }
+  document.getElementById('out')!.appendChild(cv);
 }
 
 function row(title: string, frames: Frame[], s: number, bg: number): void {
@@ -62,7 +83,22 @@ const only = q.get('only');
 if (only) frames = frames.filter((f) => only.split(',').includes(f.name));
 const zoom = q.get('zoom');
 
-if (zoom) {
+if (q.get('sprite')) {
+  const all = buildAllSpecs();
+  const sheet = (key: string) => pick(all, key).map((f) => ({ name: f.name.split('/')[1], buf: f.buf }));
+  const pc = sheet('pc_echo'), ow = sheet('ow_echo');
+  const floor = (key: string) => all.find((p) => p.key === key)!.frames[0].buf;
+  const helipad = floor('bg_helipad');
+  rowOn('pc_echo 20x30 (new), x4', pc, 4, helipad, 230, 150);
+  rowOn('ow_echo 16x24 (old), x4', ow, 4, helipad, 230, 150);
+  const idle = (fs: Frame[]) => fs.filter((f) => f.name.endsWith('_idle') || f.name.endsWith('_walkA'));
+  for (const [key, x, y] of [['bg_scrapyard', 250, 170], ['bg_club', 240, 160], ['bg_serverfarm', 250, 200], ['bg_helipad', 230, 150]] as const) {
+    rowOn(key + ': new (left 8) then old, x1', [...idle(pc), ...idle(ow)], 1, floor(key), x, y);
+    rowOn(key + ': new (left 8) then old, x2 = game window scale', [...idle(pc), ...idle(ow)], 2, floor(key), x, y);
+  }
+  row('Echo standees (x2)', frames.filter((f) => f.name.startsWith('echo')), 2, C.ink);
+  row('', frames.filter((f) => f.name.startsWith('echo')), 2, C.slate);
+} else if (zoom) {
   const [zx, zy, zw, zh] = zoom.split(',').map(Number);
   row(`zoom x4 ${zoom}`, frames.map((f) => ({ name: f.name, buf: f.buf.crop(zx, zy, zw, zh) })), 4, C.ink);
 } else {

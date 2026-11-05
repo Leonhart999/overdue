@@ -148,7 +148,7 @@ class BlinkLegs extends Legs {
         const x = p.x + dx * d, y = p.y + dy * d;
         if (spotFree(w, x, y, p.r)) { tx = x; ty = y; break; }
       }
-      w.fx.ghost('ow_echo', `${p.dir}_idle`, p.x, p.y, { tint: P.magenta, alpha: 0.7 }, 0.5);
+      w.fx.ghost('pc_echo', `${p.dir}_idle`, p.x, p.y, { tint: P.magenta, alpha: 0.7 }, 0.5);
       w.decoy = { x: p.x, y: p.y, t: 1.2 };
       w.fx.burst(p.x, p.y - 9, 10, P.rose, 60, 0.3, 1);
       p.x = tx;
@@ -168,7 +168,7 @@ class BlinkLegs extends Legs {
     const d = w.decoy;
     if (d) {
       const a = 0.35 + 0.25 * Math.sin(w.realTime * 30);
-      g.img('ow_echo', 'down_idle', d.x, d.y, { tint: P.rose, alpha: a, depth: d.y });
+      g.img('pc_echo', 'down_idle', d.x, d.y, { tint: P.rose, alpha: a, depth: d.y });
     }
   }
 }

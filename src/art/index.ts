@@ -15,6 +15,7 @@ import { buildArenaBackgrounds } from './arenas';
 import { buildBossArt } from './bossArt';
 import { buildHubArt } from './hub';
 import { buildStandeeArt } from './standees';
+import { buildEchoTopSheet } from './actors/echoTop';
 
 let specs: SheetSpec[] | null = null;
 
@@ -37,6 +38,7 @@ export function buildAllSpecs(): SheetSpec[] {
     ...buildBossArt(),
     ...buildHubArt(),
     ...buildStandeeArt(),
+    buildEchoTopSheet(),
     ...extra.flatMap((f) => f()),
   ];
   const seen = new Set<string>();

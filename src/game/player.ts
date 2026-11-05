@@ -20,7 +20,7 @@ export class Player {
   vy = 0;
   readonly r = 5;
   /** Hurt circle: (x, y - 9), radius 4. Small on purpose. */
-  readonly hz = 9;
+  readonly hz = 11;
   readonly hr = 4;
   hp: number;
   maxHp: number;
@@ -272,15 +272,15 @@ export class Player {
     };
     const weaponBehind = this.dir === 'up';
     if (weaponBehind) this.weapon.draw(g, w, this, this.y - 0.2);
-    g.img('ow_echo', frame, this.x, y, opts);
+    g.img('pc_echo', frame, this.x, y, opts);
     if (!weaponBehind) this.weapon.draw(g, w, this, this.y + 0.2);
     this.legs.draw(g, w, this);
     this.arm.draw(g, w, this);
     if (this.iframes > 0 && !this.forced && w.realTime - this.lastGhost >= 1 / 30) {
       this.lastGhost = w.realTime;
-      w.fx.ghost('ow_echo', frame, this.x, y, { tint: P.cyan, alpha: 0.5, sy: legs }, 0.18);
+      w.fx.ghost('pc_echo', frame, this.x, y, { tint: P.cyan, alpha: 0.5, sy: legs }, 0.18);
     }
-    if (this.overclockT > 0) g.circle(this.x, this.y - 9, 10, P.magenta, 0.15, 'light');
-    if (this.shield > 0) g.ring(this.x, this.y - 10, 10, 1, P.cyan, 0.45 + 0.2 * Math.sin(w.realTime * 6), 'top');
+    if (this.overclockT > 0) g.circle(this.x, this.y - 13, 12, P.magenta, 0.15, 'light');
+    if (this.shield > 0) g.ring(this.x, this.y - 14, 12, 1, P.cyan, 0.45 + 0.2 * Math.sin(w.realTime * 6), 'top');
   }
 }

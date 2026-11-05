@@ -277,9 +277,9 @@ export class World {
 
   /** What bosses aim at: the decoy if one exists, otherwise the player. (feet position) */
   target(): { x: number; y: number; hx: number; hy: number } {
-    if (this.decoy) return { x: this.decoy.x, y: this.decoy.y, hx: this.decoy.x, hy: this.decoy.y - 9 };
+    if (this.decoy) return { x: this.decoy.x, y: this.decoy.y, hx: this.decoy.x, hy: this.decoy.y - 11 };
     const p = this.player;
-    return { x: p.x, y: p.y, hx: p.x, hy: p.y - 9 };
+    return { x: p.x, y: p.y, hx: p.x, hy: p.y - p.hz };
   }
 
   // ------------------------------------------------------------------ movement

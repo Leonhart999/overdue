@@ -51,6 +51,8 @@ interface Mat {
   rim?: readonly number[] | null;
   /** Ordered dither on band edges (large soft surfaces only). */
   dither?: boolean;
+  /** Background scenery: figures in front of it still get their rim light along it. */
+  back?: boolean;
 }
 
 interface PartOpts {
@@ -234,9 +236,11 @@ class Stage {
       const m = this.mats[this.mat[i]];
       if (m && m.rim === null) continue;
       const rim = m?.rim ?? this.rim;
-      if (!opPre(x + 1, y)) b.px[i] = rim[0];
-      else if (rim[1] && !opPre(x + 2, y) && !opPre(x + 2, y - 1) && !opPre(x + 2, y + 1) && opPre(x, y - 1) && opPre(x, y + 1)) b.px[i] = rim[1];
-      else if (!opPre(x, y - 1) && !opPre(x + 1, y - 1) && rim[1]) b.px[i] = rim[1];
+      // a figure in front of background scenery treats the scenery as empty space
+      const op = m?.back ? opPre : (xx: number, yy: number) => opPre(xx, yy) && !(xx >= 0 && xx < W && yy >= 0 && yy < H && this.mats[this.mat[yy * W + xx]]?.back);
+      if (!op(x + 1, y)) b.px[i] = rim[0];
+      else if (rim[1] && !op(x + 2, y) && !op(x + 2, y - 1) && !op(x + 2, y + 1) && op(x, y - 1) && op(x, y + 1)) b.px[i] = rim[1];
+      else if (!op(x, y - 1) && !op(x + 1, y - 1) && rim[1]) b.px[i] = rim[1];
     }
     if (post) post(b, this);
     b.outline(C.ink);
@@ -334,6 +338,7 @@ type EchoMood = 'normal' | 'hurt' | 'win';
 function echo(mood: EchoMood): PixBuf {
   const s = new Stage([C.cyan, C.teal]);
   const win = mood === 'win';
+  echoBackdrop(s);
   // --- torso / jacket (3/4 turned right: centre line right of the frame centre)
   const torso = s.part(M.jacket, (b) => b.poly([[30, 88], [35, 78], [45, 68], [70, 68], [84, 76], [91, 92], [89, 144], [38, 144], [36, 116]], 1), { r: 8, bias: 0.04 });
   // far half turns away from the light
@@ -358,6 +363,7 @@ function echo(mood: EchoMood): PixBuf {
   // debtor barcode patch on the sleeve
   s.part({ ramp: [C.ink, C.night, C.navy] }, (b) => b.poly([[23, 96], [33, 97], [32, 105], [22, 104]], 1), { r: 1, cast: 0.15 });
   s.paint((b) => { [1, 0, 1, 1, 0, 1, 0, 1].forEach((on, i) => { if (on) b.line(24 + i, 98, 24 + i, 103, i % 3 === 0 ? C.cyan : C.teal); }); });
+  echoJacketDetail(s, torso);
   // --- neck + high collar
   s.part(M.skin, (b) => b.poly([[48, 50], [62, 50], [63, 68], [49, 68]], 1), { r: 5, bias: -0.3 });
   s.part(M.jacket, (b) => b.poly([[43, 59], [50, 63], [64, 63], [71, 57], [73, 70], [64, 76], [50, 76], [41, 70]], 1), { r: 4, bias: 0.06 });
@@ -391,6 +397,64 @@ function echo(mood: EchoMood): PixBuf {
       for (const [x, y] of [[30, 120], [36, 104]] as Pt[]) { b.set(x, y, C.ink); b.set(x + 1, y, C.ink); b.set(x, y + 1, C.night); }
     }
   });
+}
+
+/** Night skyline sliver behind Echo's shoulders: two dark blocks with lit windows, a neon sign, rain. */
+function echoBackdrop(s: Stage): void {
+  const BLD: Mat = { ramp: [C.ink, C.night, C.navy, C.indigo], bias: -0.24, rim: [C.indigo], back: true };
+  const left = s.part(BLD, (b) => { b.rect(0, 66, 15, 80, 1); b.rect(9, 94, 13, 52, 1); b.rect(5, 56, 2, 10, 1); }, { r: 2, cast: 0 });
+  const right = s.part(BLD, (b) => { b.rect(90, 50, 22, 96, 1); b.rect(96, 42, 8, 8, 1); }, { r: 2, cast: 0 });
+  s.paint((b) => {
+    // windows: 2x1 lights on a 4x5 grid, mostly sodium, some cyan, a rare magenta
+    for (let y = 46; y < H; y += 5) for (let x = 1; x < W - 1; x += 4) {
+      const h = hash2(x, y, 23);
+      if (h > 0.34) continue;
+      const c = h < 0.04 ? C.magenta : h < 0.12 ? C.teal : h < 0.2 ? C.orange : C.sodium;
+      b.set(x, y, c); b.set(x + 1, y, c);
+    }
+    // aircraft light on the antenna
+    b.set(5, 55, C.red); b.set(6, 55, C.rose);
+  }, s.mask((b) => { b.rect(1, 68, 13, 78, 1); b.rect(10, 96, 11, 50, 1); b.rect(91, 52, 20, 94, 1); }));
+  // vertical neon sign on the right block: magenta frame, cyan bars
+  s.paint((b) => {
+    b.rect(103, 58, 8, 30, C.plum);
+    b.strokeRect(103, 58, 8, 30, C.magenta);
+    b.vline(104, 59, 86, C.rose);
+    for (const y of [62, 70, 78]) { b.hline(105, 109, y, C.cyan); b.hline(106, 108, y + 2, C.ice); b.vline(107, y, y + 4, C.cyan); }
+  });
+  // rain streaks over the blocks
+  s.paint((b) => {
+    for (let k = 0; k < 40; k++) {
+      const x = Math.floor(hash2(k, 1, 51) * W), y = 46 + Math.floor(hash2(k, 2, 51) * 98);
+      b.line(x, y, x - 1, y + 3, C.indigo);
+    }
+  }, s.mask((b) => { b.rect(0, 66, 15, 80, 1); b.rect(9, 94, 13, 52, 1); b.rect(90, 50, 13, 96, 1); }));
+  void left; void right;
+}
+
+/** Jacket material: lit planes on the near shoulder, circuit seams, purple lining at the open front. */
+function echoJacketDetail(s: Stage, torso: Mask): void {
+  // key light on the near shoulder and the top of the sleeve
+  s.light(0.16, (b) => { b.ellipse(36, 82, 9, 6, 1); b.ellipse(26, 98, 5, 9, 1); });
+  s.light(0.08, (b) => b.poly([[44, 70], [54, 70], [58, 96], [46, 100]], 1), torso);
+  // lining inside the open front, just inside the trim
+  s.paint((b) => {
+    b.line(56, 72, 60, 92, C.grape); b.line(57, 72, 61, 90, C.orchid);
+    b.line(67, 72, 64, 92, C.grape); b.line(66, 72, 63, 88, C.plum);
+  });
+  // circuit seams: teal traces with lit nodes (sleeve, lower front panels)
+  s.paint((b) => {
+    const trace = (pts: Pt[]) => {
+      for (let i = 1; i < pts.length; i++) b.line(pts[i - 1][0], pts[i - 1][1], pts[i][0], pts[i][1], C.teal);
+      for (const [x, y] of [pts[0], pts[pts.length - 1]]) { b.set(x, y, C.cyan); }
+    };
+    trace([[30, 108], [28, 116], [28, 126], [25, 130], [25, 142]]);
+    trace([[48, 118], [48, 128], [51, 131], [51, 142]]);
+    trace([[72, 104], [72, 112], [75, 115], [75, 126]]);
+    b.set(28, 120, C.ice); b.set(48, 124, C.ice);
+  });
+  // hem with a lit trim at the bottom of the near panel
+  s.paint((b) => { b.line(44, 143, 58, 143, C.teal); });
 }
 
 /** Echo's chrome arm: segmented plates, dark joints, glowing seam, fist built from finger capsules. */
