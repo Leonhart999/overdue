@@ -77,6 +77,7 @@ const ENTER = () => key('Enter', 'Enter', 13);
 
 await send('Runtime.enable');
 await send('Page.enable');
+await send('Emulation.setDeviceMetricsOverride', { width: 1280, height: 720, deviceScaleFactor: 1, mobile: false });
 
 const STATE = `(() => { const w = window.__od?.world; if (!w) return null; return { state: w.state, t: Math.round(w.time), hp: w.player.hp, boss: Math.round(w.boss.hp), max: w.boss.maxHp, phase: w.boss.phase, bullets: w.bullets.length, bodies: w.bodies.length, scene: window.__od.game.scene.getScenes(true).map(s => s.scene.key).join(',') }; })()`;
 

@@ -14,8 +14,10 @@ const SLOT_SHORT: Record<string, string> = {
 export function drawHud(g: Gfx, w: World, camX: number, camY: number): void {
   const p = w.player;
   // ---- hearts
-  for (let i = 0; i < p.maxHp; i++) g.img('hud', i < p.hp ? 'heart' : 'heart_empty', 8 + i * 11, 6, { layer: 'ui', ox: 0, oy: 0 });
-  for (let i = 0; i < p.shieldMax; i++) g.img('hud', i < p.shield ? 'shield' : 'heart_empty', 8 + (p.maxHp + i) * 11 + 3, 6, { layer: 'ui', ox: 0, oy: 0, alpha: i < p.shield ? 1 : 0.4 });
+  const shown = Math.min(p.maxHp, 10);
+  for (let i = 0; i < shown; i++) g.img('hud', i < p.hp ? 'heart' : 'heart_empty', 8 + i * 11, 6, { layer: 'ui', ox: 0, oy: 0 });
+  if (p.maxHp > shown) g.text(`${p.hp}`, 8 + shown * 11 + 2, 3, { layer: 'ui', color: P.rose });
+  for (let i = 0; i < p.shieldMax; i++) g.img('hud', i < p.shield ? 'shield' : 'heart_empty', 8 + (shown + i) * 11 + 3, 6, { layer: 'ui', ox: 0, oy: 0, alpha: i < p.shield ? 1 : 0.4 });
 
   // ---- weapon
   const wt = WEAPON_TEXT[p.loadout.weapon];
