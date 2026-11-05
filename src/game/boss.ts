@@ -22,6 +22,9 @@ import type { BossId } from './loadout';
 import type { Hit, Shape } from './types';
 import type { World } from './world';
 
+/** Boss HP multiplier for the n-th fight of a run (1-based). */
+export function tierHp(tier: number): number { return [1, 1.35, 1.7, 2.0][tier - 1] ?? 2.0; }
+
 /** Time scale applied to a jammed boss and its own bullets and telegraphs (jack arm). */
 export const JAM_SLOW = 0.7;
 
@@ -95,14 +98,14 @@ export abstract class Boss implements Clocked {
   constructor(protected w: World, readonly tier: number, x: number, y: number, baseHp: number) {
     this.x = x;
     this.y = y;
-    this.maxHp = this.hp = Math.round(baseHp * ([1, 1.35, 1.7][tier - 1] ?? 1.7) * w.hpMul);
+    this.maxHp = this.hp = Math.round(baseHp * tierHp(tier) * w.hpMul);
     this.poiseMax = 100 + 15 * (tier - 1);
   }
 
   /** Telegraph/recovery multiplier: faster at higher tiers, slower with tactical optics. */
-  get pace(): number { return ([1, 0.9, 0.82][this.tier - 1] ?? 0.8) * (this.w.player?.teleMul ?? 1) * this.w.paceMul; }
+  get pace(): number { return ([1, 0.9, 0.82, 0.76][this.tier - 1] ?? 0.76) * (this.w.player?.teleMul ?? 1) * this.w.paceMul; }
   /** Bullet speed multiplier by tier. */
-  get bulletMul(): number { return [1, 1.08, 1.15][this.tier - 1] ?? 1.15; }
+  get bulletMul(): number { return [1, 1.08, 1.15, 1.2][this.tier - 1] ?? 1.2; }
   tele(s: number): number { return s * this.pace; }
   get staggered(): boolean { return this.staggerT > 0; }
 

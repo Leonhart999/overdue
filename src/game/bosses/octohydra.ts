@@ -20,7 +20,7 @@ import { P, type Gfx } from '../../engine/gfx';
 import { angleTo, clamp, dist, lerp, norm, sign } from '../../engine/math';
 import type { Script } from '../../engine/script';
 import { Body } from '../body';
-import { Boss, BossPart } from '../boss';
+import { Boss, BossPart, tierHp } from '../boss';
 import { Bullet } from '../bullet';
 import { FirePatch, Zone, type Hazard } from '../hazard';
 import { beamBlock, ConduitBox, FARM, farmOf, onSegment, ServerRack, serverfarm, type FarmGrid } from '../arenas/serverfarm';
@@ -250,7 +250,7 @@ export class Octohydra extends Boss {
     super(w, tier, x, y, CORE_HP);
     this.thresholds = [1 - 4 * BURN, 1 - 8 * BURN];
     this.staggerDur = 2.6;
-    this.headHp = Math.round(HEAD_HP * ([1, 1.35, 1.7][tier - 1] ?? 1.7) * w.hpMul);
+    this.headHp = Math.round(HEAD_HP * tierHp(tier) * w.hpMul);
     this.core = this.addPart(new CorePart(this, x, y)) as CorePart;
     this.spots = FARM.spots.map(([sx, sy], i) => ({ i, x: sx, y: sy, type: SPOT_TYPES[i], state: 'dormant', t: 0, head: null, stump: null, regrows: 0, marked: false }));
     for (let i = 0; i < 3; i++) this.wake(this.spots[i], 1.0 + i * 0.45);
