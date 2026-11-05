@@ -14,6 +14,7 @@ import { buildSprites } from './sprites';
 import { buildArenaBackgrounds } from './arenas';
 import { buildBossArt } from './bossArt';
 import { buildHubArt } from './hub';
+import { buildStandeeArt } from './standees';
 
 let specs: SheetSpec[] | null = null;
 
@@ -35,6 +36,7 @@ export function buildAllSpecs(): SheetSpec[] {
     ...buildArenaBackgrounds(),
     ...buildBossArt(),
     ...buildHubArt(),
+    ...buildStandeeArt(),
     ...extra.flatMap((f) => f()),
   ];
   const seen = new Set<string>();

@@ -15,13 +15,19 @@ export class ResultScene extends Phaser.Scene {
     const run = session.run;
     this.cameras.main.fadeIn(300, 5, 4, 10);
     this.add.rectangle(0, 0, W, H, P.ink).setOrigin(0, 0);
+    // Echo's standee in the corner: win or hurt expression
+    const face = this.won ? 'echo_win' : 'echo_hurt';
+    if (this.textures.exists('standee') && this.textures.get('standee').has(face)) {
+      this.add.circle(64, 300, 70, this.won ? P.amber : P.red, 0.1);
+      this.add.image(64, H, 'standee', face).setOrigin(0.5, 1);
+    }
     text(this, W / 2, 30, this.won ? UI.victory : UI.defeat, { scale: 3, align: 'center', color: this.won ? P.amber : P.red, stroke: true });
     if (run) {
       const l = run.loadout;
       const mods = l.mods.map((m) => MOD_TEXT[m].name).join(' ');
       text(this, W / 2, 84, `${WEAPON_TEXT[l.weapon].name}${mods ? ' + ' + mods : ''}`, { align: 'center', color: P.amber });
       text(this, W / 2, 102, SLOTS.map((s) => CYBER_TEXT[l.cyber[s]].name).filter((n) => n !== '空').join(' · '), { align: 'center', color: P.steel });
-      const cols = [80, 220, 300, 370, 460, 550];
+      const cols = [140, 260, 330, 400, 480, 560];
       const head = ['头目', UI.stats.time, UI.stats.hits, UI.stats.dodges, UI.stats.staggers, UI.stats.env];
       head.forEach((h, i) => text(this, cols[i], 136, h, { color: P.slate }));
       run.records.forEach((r, j) => {

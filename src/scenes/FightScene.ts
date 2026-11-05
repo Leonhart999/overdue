@@ -151,6 +151,7 @@ export class FightScene extends Phaser.Scene {
     drawHud(g, w, sx, sy);
     w.fx.drawFlash(g, W, H);
     if (w.state === 'intro') this.drawIntro();
+    this.drawPhaseCard();
     this.drawHint();
     if (this.paused) this.pause.draw(this.gfx, UI.controls);
     if (w.state === 'won' || w.state === 'lost') this.drawEndBanner();
@@ -167,11 +168,50 @@ export class FightScene extends Phaser.Scene {
     g.rect(0, 140, W, 82, P.ink, 0.85 * a, 'ui');
     g.rect(0, 140, W, 1, P.red, a, 'ui');
     g.rect(0, 221, W, 1, P.red, a, 'ui');
+    const boss = w.boss!.id;
+    if (this.hasStandee(boss)) {
+      // versus card: Echo (faces right) on the left, the boss (faces left) on the right;
+      // the standees break out of the band, bottoms on its lower edge
+      g.circle(540 + slide, 176, 74, P.red, 0.14 * a, 'ui');
+      g.circle(100 - slide, 176, 64, P.cyan, 0.08 * a, 'ui');
+      if (this.hasStandee('echo')) g.img('standee', 'echo', 100 - slide, 222, { layer: 'ui', ox: 0.5, oy: 1, alpha: a });
+      g.img('standee', boss, 540 + slide, 222, { layer: 'ui', ox: 0.5, oy: 1, alpha: a });
+      g.text(UI.fight.replace('{n}', String(this.data0.tier)), W / 2, 148, { layer: 'ui', color: P.fog, alpha: a, align: 'center' });
+      g.text(bt.name, W / 2, 162, { layer: 'ui', color: P.white, alpha: a, scale: 2, align: 'center' });
+      g.text(bt.en, W / 2, 190, { layer: 'ui', color: P.red, alpha: a, align: 'center' });
+      g.text(bt.place, W / 2, 204, { layer: 'ui', color: P.sodium, alpha: a, align: 'center' });
+      return;
+    }
     if (def.portrait) g.img(def.portrait.key, def.portrait.frame, 150 - slide, 149, { layer: 'ui', ox: 0, oy: 0, alpha: a });
     g.text(UI.fight.replace('{n}', String(this.data0.tier)), 232 + slide, 150, { layer: 'ui', color: P.fog, alpha: a });
     g.text(bt.name, 232 + slide, 166, { layer: 'ui', color: P.white, alpha: a, scale: 2 });
     g.text(bt.en, 232 + slide + bt.name.length * 24 + 10, 176, { layer: 'ui', color: P.red, alpha: a });
     g.text(bt.place, 232 + slide, 196, { layer: 'ui', color: P.sodium, alpha: a });
+  }
+
+  private seenPhase = 0;
+  private phaseCardT = 0;
+
+  private drawPhaseCard(): void {
+    const w = this.world, b = w.boss!;
+    if (b.phase !== this.seenPhase) { this.seenPhase = b.phase; if (b.phase > 0 && !b.dying) this.phaseCardT = 1.3; }
+    if (this.phaseCardT <= 0) return;
+    this.phaseCardT -= this.game.loop.delta / 1000;
+    const frame = this.hasStandee(`${b.id}_p2`) ? `${b.id}_p2` : this.hasStandee(b.id) ? b.id : null;
+    if (!frame) return;
+    const t = 1.3 - this.phaseCardT;
+    const a = Math.min(1, t * 5, this.phaseCardT * 4);
+    const slide = (1 - Math.min(1, t * 4)) * 80;
+    const g = this.gfx;
+    g.rect(470 + slide, 244, 170, 116, P.ink, 0.6 * a, 'ui');
+    g.rect(470 + slide, 244, 2, 116, P.red, a, 'ui');
+    g.circle(570 + slide, 300, 60, P.red, 0.15 * a, 'ui');
+    g.img('standee', frame, 572 + slide, H, { layer: 'ui', ox: 0.5, oy: 1, alpha: a });
+    g.text(`第 ${b.phase + 1} 阶段`, 480 + slide, 248, { layer: 'ui', color: P.red, alpha: a });
+  }
+
+  private hasStandee(frame: string): boolean {
+    return this.textures.exists('standee') && this.textures.get('standee').has(frame);
   }
 
   private drawHint(): void {
