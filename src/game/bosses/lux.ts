@@ -30,6 +30,8 @@ const HEART = { frame: 'heart', glowColor: P.magenta, r: 3.5, life: 5 };
 const CHEST = 30;
 
 interface LaserState {
+  /** Sweep only: the bounced path at the end of the sweep, shown during the warning. */
+  endPath?: BeamPath;
   path: BeamPath;
   warn: boolean;
   prog: number;
@@ -145,6 +147,7 @@ export class Lux extends Boss implements StageListener {
   }
 
   onStagger(): void {
+    if (this.encore) this.encoreCd = 14;
     this.encore = false;
     this.laser = null;
     this.anim = 'hurt';
@@ -473,7 +476,8 @@ export class Lux extends Boss implements StageListener {
       const wEnd = this.clock + warn;
       while (this.clock < wEnd) {
         const path = this.trace(a);
-        this.laser = { path, warn: true, prog: 1 - (wEnd - this.clock) / warn, selfIdx: this.selfCross(path), sweep: span, a0: a };
+        const endPath = span ? this.trace(a + span) : undefined;
+        this.laser = { path, warn: true, prog: 1 - (wEnd - this.clock) / warn, selfIdx: this.selfCross(path), sweep: span, a0: a, endPath };
         yield;
       }
       w.sfx('laser');
@@ -607,6 +611,16 @@ export class Lux extends Boss implements StageListener {
   private drawLaser(g: Gfx, w: World): void {
     const L = this.laser;
     if (!L) return;
+    // the beam hits along the ground: show that line on the floor so the hit area is honest
+    const gp = L.path.pts;
+    for (let i = 0; i < gp.length - 1; i++) g.line(gp[i][0], gp[i][1], gp[i + 1][0], gp[i + 1][1], L.warn ? 8 : 8, P.red, L.warn ? 0.1 + 0.12 * L.prog : 0.3, 'floor');
+    if (L.warn && L.endPath) {
+      const ep = L.endPath.pts;
+      for (let i = 0; i < ep.length - 1; i++) {
+        g.line(ep[i][0], ep[i][1], ep[i + 1][0], ep[i + 1][1], 1, P.red, 0.5, 'floor');
+        g.line(ep[i][0], ep[i][1] - 8, ep[i + 1][0], ep[i + 1][1] - 8, 1, P.red, 0.35 + 0.3 * L.prog, 'top');
+      }
+    }
     const pts = L.path.pts;
     const H = 8;
     const pulse = 0.5 + 0.5 * Math.sin(w.realTime * 30);
@@ -614,11 +628,10 @@ export class Lux extends Boss implements StageListener {
       const x1 = pts[i][0], y1 = i === 0 ? this.y - CHEST : pts[i][1] - H, x2 = pts[i + 1][0], y2 = pts[i + 1][1] - H;
       const self = L.selfIdx >= 0 && i >= L.selfIdx;
       if (L.warn) {
-        const c = self ? COL.interact : P.red;
-        g.line(x1, y1, x2, y2, Math.max(1, 6 * L.prog), c, 0.18, 'top');
-        g.line(x1, y1, x2, y2, 1, c, 0.5 + 0.4 * pulse, 'top');
+        g.line(x1, y1, x2, y2, Math.max(1, 6 * L.prog), P.red, 0.18, 'top');
+        g.line(x1, y1, x2, y2, 1, self ? P.rose : P.red, 0.5 + 0.4 * pulse, 'top');
       } else {
-        g.line(x1, y1, x2, y2, 7, self ? P.amber : P.rose, 0.5, 'top');
+        g.line(x1, y1, x2, y2, 7, P.rose, 0.5, 'top');
         g.line(x1, y1, x2, y2, 2, P.white, 1, 'top');
         g.line(x1, y1, x2, y2, 10, P.magenta, 0.12, 'light');
       }
@@ -627,6 +640,11 @@ export class Lux extends Boss implements StageListener {
         const n = Math.max(1, Math.ceil(dist(x1, y1, x2, y2) / 18));
         for (let k = 0; k <= n; k++) this.stage.holes.push({ x: x1 + ((x2 - x1) * k) / n, y: y1 + ((y2 - y1) * k) / n, r: 20 });
       }
+    }
+    if (L.selfIdx >= 0) {
+      // the reflection will come back into her: amber target ring on Lux
+      g.ring(this.body.hx, this.body.hy, 12 + 2 * pulse, 2, COL.interact, 0.9, 'top');
+      g.text('反射', this.body.hx, this.body.hy - 30, { color: COL.interact, align: 'center' });
     }
     if (L.warn && L.sweep) {
       const a0 = Math.min(L.a0, L.a0 + L.sweep), a1 = Math.max(L.a0, L.a0 + L.sweep);

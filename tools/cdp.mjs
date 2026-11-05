@@ -102,10 +102,12 @@ if (FLOW) {
   await shot('flow_1_title');
   await ENTER();
   await sleep(600);
-  await shot('flow_2_select');
-  await key('ArrowDown', 'ArrowDown', 40);
-  await ENTER();
-  await sleep(2500);
+  await shot('flow_2_hub');
+  // walk-in shortcut: stand at the exit elevator and press E
+  await ev(`(() => { const w = window.__od.world; w.player.x = 320; w.player.y = 84; })()`);
+  await sleep(200);
+  await key('KeyE', 'e', 69);
+  await sleep(3000);
   await shot('flow_3_fight');
   // fast-forward: kill the boss
   await ev(`(() => { const w = window.__od.world; w.boss.hp = 1; w.damage(w.boss.parts[0], { dmg: 50, kind: 'bullet', x: w.boss.x, y: w.boss.y - 30, from: 'player' }); })()`);

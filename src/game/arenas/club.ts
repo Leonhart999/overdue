@@ -11,7 +11,7 @@
  * The stage is a world object (`ClubStage`) so the boss can find it through `w.objects`.
  */
 import { COL, P, type Gfx } from '../../engine/gfx';
-import { clamp, dist } from '../../engine/math';
+import { clamp, dist, rayCircle } from '../../engine/math';
 import { Body } from '../body';
 import { Hazard } from '../hazard';
 import type { Cable, Hit } from '../types';
@@ -297,6 +297,12 @@ export function traceBeam(w: World, mirrors: Mirror[], x: number, y: number, a: 
       const tt = raySeg(ox, oy, dx, dy, ax, ay, bx, by);
       if (tt < t) { t = tt; hit = m; }
     }
+    // a mirror column hit edge-on (parallel to its face) is solid: the beam stops on it
+    for (const m of mirrors) {
+      if (m === last || m === hit || m.dead) continue;
+      const tc = rayCircle(ox, oy, dx, dy, m.x, m.y, m.r * 0.7);
+      if (tc > 1e-3 && tc < t) { t = tc; hit = null; }
+    }
     ox += dx * t; oy += dy * t;
     pts.push([ox, oy]);
     if (!hit || i === bounces) break;
@@ -458,7 +464,7 @@ export class ClubStage {
     // full
     const pick = rng.int(0, 6);
     switch (pick) {
-      case 0: this.lightCells(w, this.all((c, r) => (c + r) % 2 === rng.int(0, 1))); break;
+      case 0: { const par = rng.int(0, 1); this.lightCells(w, this.all((c, r) => (c + r) % 2 === par)); break; }
       case 1: this.lightCells(w, this.all((c, r) => c === 0 || r === 0 || c === FLOOR.cols - 1 || r === FLOOR.rows - 1)); break;
       case 2: this.lightCells(w, this.all((c, r) => c >= 2 && c <= 5 && r >= 1 && r <= 3)); break;
       case 3: { const k = rng.int(0, 2); this.lightCells(w, this.all((c, r) => (c + r) % 3 === k)); break; }
