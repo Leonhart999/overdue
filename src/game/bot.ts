@@ -3,7 +3,7 @@
  * strafes, dodges telegraphs and bullets, uses specials and the arm on simple timers.
  */
 import type { InputState } from '../engine/input';
-import { dist, norm } from '../engine/math';
+import { dist, norm, Rng } from '../engine/math';
 import { shapeHits } from './types';
 import type { World } from './world';
 
@@ -13,6 +13,8 @@ export class Bot {
   private nextFlip = 2;
   private nextArm = 3;
   private altHeld = 0;
+  /** Own seeded RNG: bot runs are reproducible and never disturb the world's RNG. */
+  private rng = new Rng(77);
 
   update(w: World, s: InputState, dt: number): void {
     this.t += dt;
@@ -27,7 +29,7 @@ export class Bot {
     const want = { riveter: 130, arc: 80, breacher: 55, blade: 28 }[p.loadout.weapon];
     const d = dist(p.x, p.y, tgt.x, tgt.y);
     const [nx, ny] = norm(tgt.x - p.x, tgt.y - p.y);
-    if (this.t > this.nextFlip) { this.strafe *= -1; this.nextFlip = this.t + 1.5 + Math.random() * 2; }
+    if (this.t > this.nextFlip) { this.strafe *= -1; this.nextFlip = this.t + 1.5 + this.rng.next() * 2; }
     let mx = -ny * this.strafe, my = nx * this.strafe;
     if (d > want + 20) { mx += nx * 1.2; my += ny * 1.2; }
     if (d < want - 15) { mx -= nx * 1.2; my -= ny * 1.2; }
@@ -69,7 +71,7 @@ export class Bot {
     } else if (alt) { s.altPressed = true; s.alt = true; } else s.alt = false;
     if (this.t > this.nextArm) {
       s.armPressed = true; s.arm = true;
-      this.nextArm = this.t + 2 + Math.random() * 2;
+      this.nextArm = this.t + 2 + this.rng.next() * 2;
     } else if (s.arm && this.t > this.nextArm - 1.6) { s.arm = false; s.armReleased = true; }
     // pull a lever when one is near
     s.interactPressed = Math.floor(this.t * 4) % 8 === 0;

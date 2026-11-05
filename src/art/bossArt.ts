@@ -3,7 +3,8 @@ import type { SheetSpec } from './core/sheet';
 import { buildCoverArt } from './cover';
 import { buildLuxArt } from './lux';
 import { buildOctohydraArt } from './octohydra';
+import { buildKadeArt } from './kade';
 
 export function buildBossArt(): SheetSpec[] {
-  return [...buildLuxArt(), ...buildOctohydraArt(), ...buildCoverArt()];
+  return [...buildLuxArt(), ...buildOctohydraArt(), ...buildKadeArt(), ...buildCoverArt()];
 }
