@@ -14,4 +14,6 @@ export interface BossDef {
   music: MusicTrack;
   /** Frame in the 'portraits' sheet (64x64) or another texture for the intro card. */
   portrait?: { key: string; frame: string | number };
+  /** One line shown at the start of the first few fights: what in the arena can be used. */
+  hint?: string;
 }

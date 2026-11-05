@@ -36,6 +36,7 @@ export class FightScene extends Phaser.Scene {
   private ended = false;
   private uiCam!: Phaser.Cameras.Scene2D.Camera;
   private data0!: FightData;
+  private musicOn = false;
 
   constructor() { super('Fight'); }
 
@@ -67,12 +68,13 @@ export class FightScene extends Phaser.Scene {
     w.boss = def.make(w, this.data0.tier);
     w.input = this.kbm.state;
     this.world = w;
-    audio.startMusic(def.music);
-    audio.setMusicVolume(0.3);
+    this.musicOn = false;
+    this.input.setDefaultCursor('none');
     main.fadeIn(250, 5, 4, 10);
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       audio.stopMusic();
       audio.stopLoops();
+      this.input.setDefaultCursor('default');
       this.world.player.weapon.dispose();
     });
     if (import.meta.env.DEV) (window as unknown as { __od: Record<string, unknown> }).__od.world = w;
@@ -82,6 +84,11 @@ export class FightScene extends Phaser.Scene {
     const w = this.world;
     const inp: InputState = this.kbm.state;
     this.kbm.poll(this.cameras.main);
+    if (!this.musicOn && audio.ctx) {
+      this.musicOn = true;
+      audio.startMusic(BOSS_DEFS[w.boss!.id]!.music);
+      audio.setMusicVolume(0.3);
+    }
     if (inp.pausePressed && w.state === 'fight') {
       inp.pausePressed = false;
       this.paused = !this.paused;
@@ -121,6 +128,7 @@ export class FightScene extends Phaser.Scene {
     drawHud(g, w, sx, sy);
     w.fx.drawFlash(g, W, H);
     if (w.state === 'intro') this.drawIntro();
+    this.drawHint();
     if (this.paused) this.drawPause();
     if (w.state === 'won' || w.state === 'lost') this.drawEndBanner();
     g.end();
@@ -141,6 +149,16 @@ export class FightScene extends Phaser.Scene {
     g.text(bt.name, 232 + slide, 166, { layer: 'ui', color: P.white, alpha: a, scale: 2 });
     g.text(bt.en, 232 + slide + bt.name.length * 24 + 10, 176, { layer: 'ui', color: P.red, alpha: a });
     g.text(bt.place, 232 + slide, 196, { layer: 'ui', color: P.sodium, alpha: a });
+  }
+
+  private drawHint(): void {
+    const w = this.world;
+    const hint = BOSS_DEFS[w.boss!.id]?.hint;
+    if (!hint || w.state !== 'fight' || w.stateT > 9) return;
+    if ((session.meta.bossKills[w.boss!.id] ?? 0) >= 2) return;
+    const a = Math.min(1, w.stateT * 2, (9 - w.stateT) * 1.5);
+    this.gfx.rect(0, 340, W, 20, P.ink, 0.7 * a, 'ui');
+    this.gfx.text(hint, W / 2, 344, { layer: 'ui', align: 'center', color: P.amber, alpha: a });
   }
 
   private updatePause(inp: InputState): void {

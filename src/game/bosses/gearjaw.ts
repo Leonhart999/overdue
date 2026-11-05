@@ -537,8 +537,8 @@ export class Gearjaw extends Boss {
     if (this.staggered) frame = 'hurt';
     const shakeX = this.revT > 0 || this.charging ? w.rng.range(-1, 1) : 0;
     const flash = this.body.flash > 0;
-    g.img('bt_gearjaw' === key ? key : key, frame, this.x + shakeX, this.y + 11, {
-      flipX: this.facing < 0, fill: flash ? P.white : undefined, depth: this.y,
+    g.img(key, frame, this.x + shakeX, this.y + 11, {
+      flipX: this.facing < 0, fill: flash ? P.pale : undefined, depth: this.y,
     });
     // engine glow (weak point behind)
     const ex = this.x - this.facing * 30, ey = this.y - 62;

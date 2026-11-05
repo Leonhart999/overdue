@@ -159,8 +159,11 @@ export class Crane {
   drawTop(g: Gfx): void {
     // gantry bridge across the yard at the trolley's depth
     const by = this.y - 104;
-    g.rect(16, by - 3, 608, 5, P.night, 0.55, 'top');
-    g.line(16, by - 3, 624, by - 3, 1, P.rust, 0.6, 'top');
+    // girder bridge: dark beam, lit top rail, cross bracing
+    g.rect(16, by - 4, 608, 7, P.night, 0.6, 'top');
+    g.line(16, by - 4, 624, by - 4, 1, P.rust, 0.7, 'top');
+    g.line(16, by + 3, 624, by + 3, 1, P.umber, 0.7, 'top');
+    for (let x = 16; x < 624; x += 12) g.line(x, by - 3, x + 6, by + 2, 1, P.umber, 0.5, 'top');
     g.img('block', 'trolley', this.x, by + 4, { layer: 'top', oy: 1 });
     let ly = this.y - 66;
     if (this.fallT >= 0) ly = this.y - 66 + 66 * (this.fallT / this.fall) ** 2;

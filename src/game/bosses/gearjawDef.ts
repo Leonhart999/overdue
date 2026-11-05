@@ -8,6 +8,7 @@ export const gearjawDef: BossDef = {
   spawn: { x: 320, y: 168 },
   make: (w, tier) => new Gearjaw(w, tier, 320, 168),
   drop: 'arm_fist',
+  hint: '墙边拉杆让吊车砸下 · 油桶会爆炸 · 引它撞钢柱 · 正面有装甲，打背后',
   portrait: { key: 'portraits', frame: 'gearjaw_angry' },
   music: {
     bpm: 132,

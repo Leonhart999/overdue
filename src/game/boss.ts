@@ -29,6 +29,7 @@ export class BossPart extends Body {
   weak = false;
   /** Ignore all damage (shielded core). */
   invulnerable = false;
+  lastFlashAt = -9;
   constructor(public boss: Boss, x: number, y: number, r: number, hz: number, hr: number) {
     super();
     this.team = 'enemy';
@@ -167,7 +168,8 @@ export abstract class Boss implements Clocked {
     this.hp -= dmg;
     this.lastHitAt = this.clock;
     if (!h.quiet) {
-      part.flash = 0.06;
+      // brief flash, rate-limited so sustained damage does not keep the sprite white
+      if (this.clock - part.lastFlashAt > 0.18) { part.flash = 0.05; part.lastFlashAt = this.clock; }
       const c = h.from === 'env' ? P.amber : m.tag === 'armor' ? P.fog : m.tag === 'weak' || part.weak ? P.orange : this.staggerT > 0 ? P.rose : P.white;
       w.fx.number(part.id * 10 + (h.from === 'env' ? 1 : 0), h.x, h.y, dmg, c, dmg >= 60);
       if (m.tag === 'armor') { w.sfx('armor'); w.fx.sparks(h.x, h.y, 2, P.pale, 70); }
