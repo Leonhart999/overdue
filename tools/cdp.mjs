@@ -109,14 +109,14 @@ if (FLOW) {
   await shot('flow_3_fight');
   // fast-forward: kill the boss
   await ev(`(() => { const w = window.__od.world; w.boss.hp = 1; w.damage(w.boss.parts[0], { dmg: 50, kind: 'bullet', x: w.boss.x, y: w.boss.y - 30, from: 'player' }); })()`);
-  await sleep(4500);
+  await sleep(7000);
   await shot('flow_4_reward');
   console.log('flow scene:', await ev(`window.__od.game.scene.getScenes(true).map(s => s.scene.key).join(',')`));
   await ENTER();
   await sleep(800);
   await shot('flow_5_after_pick');
   await ENTER();
-  await sleep(2500);
+  await sleep(4000);
   await shot('flow_6_next');
   console.log('flow scene:', await ev(`window.__od.game.scene.getScenes(true).map(s => s.scene.key).join(',')`));
 }
