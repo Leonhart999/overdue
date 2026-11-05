@@ -26,6 +26,8 @@ export interface Hit {
   ignite?: boolean;
   /** No damage number, no flash (damage over time). */
   quiet?: boolean;
+  /** Id of the projectile, so multi-part bosses can count a piercing shot once. */
+  srcId?: number;
 }
 
 export type Shape =

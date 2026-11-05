@@ -115,7 +115,7 @@ class ReturnNail extends Bullet {
         if (b.dead || b.team !== 'enemy' || this.hitIds.has(b.id)) continue;
         if (dist(this.x, this.y, b.hx, b.hy) > b.hr + 3) continue;
         this.hitIds.add(b.id);
-        w.damage(b, { dmg: this.dmg, kind: 'bullet', x: this.x, y: this.y, dx: nx, dy: ny, poise: 0.7, from: 'player', src: 'recall' });
+        w.damage(b, { dmg: this.dmg, kind: 'bullet', x: this.x, y: this.y, dx: nx, dy: ny, poise: 0.7, from: 'player', src: 'recall', srcId: this.id });
         w.sfx('nailHit', 0.7, 1.3);
       }
       if (dist(this.x, this.y, t.x, t.y) < 8) {
@@ -415,7 +415,7 @@ class ArcCaster extends Weapon {
       this.links.push([px, py, b.hx, b.hy, b.team === 'enemy' ? 1 : 0]);
       px = b.hx; py = b.hy;
       if (b.team === 'enemy') {
-        w.damage(b, { dmg: 30 * p.dmgMul * dt, kind: 'shock', x: b.hx, y: b.hy, poise: 2.4 * dt, from: 'player', src: 'arc' });
+        w.damage(b, { dmg: 30 * p.dmgMul * p.fireRateMul * dt, kind: 'shock', x: b.hx, y: b.hy, poise: 2.4 * dt, from: 'player', src: 'arc' });
         hitEnemy = true;
       }
       b.onShock?.(w, 30, dt);
@@ -435,7 +435,7 @@ class ArcCaster extends Weapon {
       const [nx, ny] = norm(-(y2 - y1), x2 - x1);
       for (let i = 1; i <= n; i++) {
         const t = i / n;
-        const j = i < n ? w.rng.range(-4, 4) : 0;
+        const j = i < n ? w.vrng.range(-4, 4) : 0;
         const x = x1 + (x2 - x1) * t + nx * j, y = y1 + (y2 - y1) * t + ny * j;
         g.line(lx, ly, x, y, 3, P.cyan, 0.35, 'top');
         g.line(lx, ly, x, y, 1, P.white, 1, 'top');
@@ -504,7 +504,7 @@ class Slug extends Bullet {
   onHitBody(w: World, b: Body): void {
     const sp = this.speed || 1;
     const enemy = b.team === 'enemy';
-    w.damage(b, { dmg: enemy ? this.dmg : 2, kind: 'impact', x: this.x, y: this.y, dx: this.vx / sp, dy: this.vy / sp, poise: this.poise, armorBreak: this.armorBreak, from: 'player', src: 'slug', knock: this.knock });
+    w.damage(b, { dmg: enemy ? this.dmg : 2, kind: 'impact', x: this.x, y: this.y, dx: this.vx / sp, dy: this.vy / sp, poise: this.poise, armorBreak: this.armorBreak, from: 'player', src: 'slug', knock: this.knock, srcId: this.id });
     w.fx.sparks(this.x, this.y, 8, P.amber, 160, Math.atan2(this.vy, this.vx), 1);
     if (enemy) w.hitstop = Math.max(w.hitstop, 0.05);
   }
@@ -656,7 +656,7 @@ class Monoblade extends Weapon {
   private startSwing(w: World, p: Player): void {
     this.combo = this.clock - this.lastEnd < 0.45 && this.combo < 2 && this.swingT < 0 ? this.combo + 1 : this.swingT >= 0 && this.combo < 2 ? this.combo + 1 : 0;
     this.swingT = 0;
-    this.swingDur = this.combo === 2 ? 0.3 : 0.22;
+    this.swingDur = (this.combo === 2 ? 0.3 : 0.22) / p.fireRateMul;
     this.swingA = p.aim;
     this.hitSet.clear();
     this.buffer = 0;

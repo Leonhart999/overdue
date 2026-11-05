@@ -164,7 +164,7 @@ export class HubScene extends Phaser.Scene {
       this.keys = [];
       this.acc += Math.min(delta, 100) / 1000;
       let n = 0;
-      while (this.acc >= DT && n < 5) { w.step(DT, inp); clearEdges(inp); this.acc -= DT; n++; }
+      while (this.acc >= DT && n < 5) { w.step(DT, inp); if (!w.frozen) clearEdges(inp); this.acc -= DT; n++; }
       if (n === 5) this.acc = 0;
     }
     this.render();

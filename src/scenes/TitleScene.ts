@@ -33,7 +33,7 @@ export class TitleScene extends Phaser.Scene {
     const menu = new Menu(this, refresh);
     menu.set([
       { x: PX, y: PY + 4, w: PW, h: 32, onSelect: () => { audio.unlock(); goto(this, 'Hub'); } },
-      { x: PX, y: PY + 38, w: PW, h: 18, onSelect: () => { m.muted = !m.muted; audio.setMuted(m.muted); saveMeta(m); refresh(); } },
+      { x: PX, y: PY + 38, w: PW, h: 18, onSelect: () => { m.muted = !m.muted; audio.setMuted(m.muted); saveMeta(m); refresh(); }, stay: true },
     ]);
     if (m.runs > 0) text(this, PX + PW / 2, PY + PH + 3, `出击 ${m.runs} 次 · 通关 ${m.wins} 次`, { align: 'center', color: P.fog, stroke: true });
 

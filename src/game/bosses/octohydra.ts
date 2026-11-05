@@ -80,6 +80,8 @@ class Head extends BossPart {
   beamHitConduit = false;
   lastSrc = '';
   lastAt = -1;
+  /** Piercing projectiles already counted on this head (neck + head share one hit). */
+  readonly srcIds = new Set<number>();
   constructor(readonly o: Octohydra, readonly spot: Spot, hp: number) {
     super(o, spot.x, spot.y, 7, 0, 9);
     this.solid = false;
@@ -213,7 +215,7 @@ class AcidGlob extends Bullet {
   draw(g: Gfx, w: World): void {
     if (this.team === 'enemy') {
       const u = Math.min(1, this.ft / this.T);
-      g.ring(this.tx, this.ty, 4 + 8 * (1 - u), 1, P.red, 0.5 + 0.4 * u, 'floor');
+      g.ring(this.tx, this.ty, 12 + 8 * (1 - u), 1, P.red, 0.5 + 0.4 * u, 'floor');
       g.ellipse(lerp(this.gx0, this.tx, u), lerp(this.gy0, this.ty, u), 3, 1.5, P.ink, 0.4, 'floor');
     }
     super.draw(g, w);
@@ -308,16 +310,8 @@ export class Octohydra extends Boss {
   private goPhase(w: World, phase: number): void {
     this.phase = phase;
     this.cancelAttacks(w);
-    this.staggerT = 0;
-    this.poise = 0;
     for (const h of this.heads) this.interrupt(h);
-    const self = this;
-    this.script = (function* () {
-      yield* self.transition(w, phase);
-      yield* self.brain(w);
-    })();
-    w.sfx('phase');
-    w.fx.shake(5, 0.4);
+    this.beginPhase(w, phase);
     this.updateStatus();
   }
 
@@ -351,6 +345,12 @@ export class Octohydra extends Boss {
     const key = hit.src ?? hit.kind;
     if (AREA_SRC.has(key) && h.lastSrc === key && h.lastAt === w.time) return 0;
     h.lastSrc = key; h.lastAt = w.time;
+    if (hit.srcId !== undefined) {
+      if (h.srcIds.has(hit.srcId)) return 0;
+      if (h.srcIds.size > 64) h.srcIds.clear();
+      h.srcIds.add(hit.srcId);
+    }
+    this.noteHit();
     let mul = this.vulnMul * (this.staggerT > 0 ? 1.5 : 1) * (h.stuck ? 1.5 : 1);
     if (viaNeck && key === 'iaido') mul *= 1.5;
     const weak = !viaNeck && h.anim === 'attack' && hit.from === 'player';
@@ -724,6 +724,7 @@ export class Octohydra extends Boss {
   *transition(w: World, phase: number): Script {
     this.transitioning = true;
     this.moveX = this.moveY = 0;
+    try {
     if (phase === 1) {
       w.fx.label(this.x, this.y - 74, '核心开始放电', P.acid, 1.4);
       for (let i = 0; i < 6; i++) { w.fx.sparks(this.x, this.y - 40, 6, P.acid, 120); w.sfx('zap', 0.6); yield* this.wait(0.15); }
@@ -739,9 +740,18 @@ export class Octohydra extends Boss {
       w.fx.label(this.x, this.y - 84, '核心升起', P.white, 1.4);
       w.sfx('rev');
       for (let i = 0; i < 8; i++) { w.fx.burst(this.x, this.y, 4, P.teal, 80, 0.4, 2, 0); yield* this.wait(0.1); }
-      this.invuln = false;
     }
-    this.transitioning = false;
+    } finally {
+      // runs even if the transition is cut short, so the fight can never lock up
+      if (phase >= 2) {
+        this.coreAnim = 'risen';
+        this.core.invulnerable = false;
+        this.core.targetable = true;
+        this.core.r = 18;
+      }
+      this.invuln = false;
+      this.transitioning = false;
+    }
     this.updateStatus();
     yield* this.wait(0.3);
   }
@@ -768,7 +778,7 @@ export class Octohydra extends Boss {
     const dir = w.rng.chance(0.5) ? 1 : -1;
     const span = 1.5, R = 420;
     const warn = this.tele(1.0), dur = 2.3;
-    this.hazard({ k: 'sector', x: ox, y: oy, r: 160, a, span, inner: 20 }, warn, 0, (h) => { h.hitsPlayer = false; });
+    this.hazard({ k: 'sector', x: ox, y: oy, r: R, a, span, inner: 20 }, warn, 0, (h) => { h.hitsPlayer = false; });
     this.hazard({ k: 'line', x1: ox, y1: oy, x2: ox + Math.cos(a - dir * span / 2) * 160, y2: oy + Math.sin(a - dir * span / 2) * 160, w: 8 }, warn, 0, (h) => { h.hitsPlayer = false; });
     w.sfx('charge', 0.8, 0.8);
     const end = this.clock + warn;
@@ -831,7 +841,7 @@ export class Octohydra extends Boss {
     let [dx, dy] = this.dirToTarget();
     const lane = () => w.raycast(this.x, this.y, dx, dy, 640, (b) => b instanceof ServerRack && !b.wrecked, true).t;
     let L = lane();
-    this.hazard({ k: 'line', x1: this.x, y1: this.y, x2: this.x + dx * L, y2: this.y + dy * L, w: 40 }, warn, 0, (h) => {
+    this.hazard({ k: 'line', x1: this.x, y1: this.y, x2: this.x + dx * L, y2: this.y + dy * L, w: 56 }, warn, 0, (h) => {
       h.hitsPlayer = false;
       h.onTick = (_ww, hh) => {
         if (hh.t < warn * 0.5) {

@@ -39,6 +39,8 @@ export interface MenuItem {
   onSelect: () => void;
   onFocus?: () => void;
   disabled?: boolean;
+  /** Toggle-style item: the menu stays usable after selecting it. */
+  stay?: boolean;
 }
 
 /**
@@ -53,7 +55,7 @@ export class Menu {
   constructor(private scene: Phaser.Scene, private onChange: () => void) {
     const kb = scene.input.keyboard!;
     kb.on('keydown', (ev: KeyboardEvent) => {
-      if (this.locked || !this.items.length) return;
+      if (this.locked || !this.items.length || ev.repeat) return;
       audio.unlock();
       const c = ev.code;
       if (c === 'ArrowUp' || c === 'KeyW') this.move(0, -1);
@@ -75,6 +77,7 @@ export class Menu {
   }
 
   set(items: MenuItem[], focus = 0): void {
+    this.locked = false;
     this.items = items;
     this.focus = Math.min(focus, items.length - 1);
     this.items[this.focus]?.onFocus?.();
@@ -115,9 +118,12 @@ export class Menu {
 
   private select(): void {
     const it = this.items[this.focus];
-    if (!it || it.disabled) return;
+    if (!it || it.disabled || this.locked) return;
     audio.sfx('uiConfirm');
+    // lock first: onSelect may open another menu (set() unlocks) or start a scene
+    this.locked = true;
     it.onSelect();
+    if (it.stay) this.locked = false;
   }
 }
 

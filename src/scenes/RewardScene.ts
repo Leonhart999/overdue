@@ -98,8 +98,8 @@ export class RewardScene extends Phaser.Scene {
         text(this, 410, 246, '不签', { align: 'center' }).setDepth(11),
       ];
       menu.set([
-        { x: 150, y: 240, w: 160, h: 28, onSelect: () => { applyCard(run, loan.card); run.pendingLoans.push(loan.loan.id); if (loan.loan.id === 'loan_heal') run.loadout.hp = Math.max(1, run.loadout.hp - 2); menu.lock(true); proceed(); } },
-        { x: 330, y: 240, w: 160, h: 28, onSelect: () => { menu.lock(true); proceed(); } },
+        { x: 150, y: 240, w: 160, h: 28, onSelect: () => { applyCard(run, loan.card); if (loan.loan.id === 'loan_heal') run.loadout.hp = Math.max(1, run.loadout.hp - (run.lastRepair ?? 0)); else run.pendingLoans.push(loan.loan.id); proceed(); } },
+        { x: 330, y: 240, w: 160, h: 28, onSelect: () => { proceed(); } },
       ], 1);
     };
 

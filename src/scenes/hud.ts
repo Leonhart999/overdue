@@ -62,6 +62,13 @@ export function drawHud(g: Gfx, w: World, camX: number, camY: number): void {
     if (s.frac < 1) g.rect(bx + 1, by + 1, 32, 24 * (1 - s.frac), P.ink, 0.75, 'ui');
     g.text(SLOT_SHORT[id] ?? CYBER_TEXT[id].name, bx + 17, by + 1, { layer: 'ui', align: 'center', color: empty ? P.slate : s.frac >= 1 ? P.pale : P.steel });
     g.text(s.extra || SLOT_TEXT[s.slot].key, bx + 17, by + 13, { layer: 'ui', align: 'center', color: s.slot === 'legs' || s.slot === 'arm' ? COL.player : P.slate, alpha: 0.85 });
+    const lock = s.slot === 'legs' ? p.locked.legs : s.slot === 'arm' ? p.locked.arm : 0;
+    if (lock > 0) {
+      g.rect(bx, by, 34, 26, P.maroon, 0.7, 'ui');
+      g.line(bx + 4, by + 4, bx + 30, by + 22, 2, P.red, 1, 'ui');
+      g.line(bx + 30, by + 4, bx + 4, by + 22, 2, P.red, 1, 'ui');
+      g.text(`封锁 ${Math.ceil(lock)}`, bx + 17, by + 27, { layer: 'ui', align: 'center', color: P.red });
+    }
   });
 
   // ---- boss bar

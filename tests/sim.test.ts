@@ -83,3 +83,51 @@ describe('hub', () => {
     }
   });
 });
+
+describe('boss scripts', () => {
+  it('a phase transition cannot be broken by a cable cut or a stagger (no permanent invulnerability)', async () => {
+    const { Gearjaw } = await import('../src/game/bosses/gearjaw');
+    const def = BOSS_DEFS.gearjaw!;
+    const w = new World(def.arena, 1, 1);
+    w.player = new Player(newLoadout('blade'), 320, 300);
+    def.arena.setup(w);
+    const b = def.make(w, 1) as InstanceType<typeof Gearjaw>;
+    w.boss = b;
+    w.state = 'fight';
+    const inp = emptyInput();
+    for (let i = 0; i < 30; i++) w.step(1 / 60, inp);
+    b.hp = b.maxHp * 0.61;
+    w.damage(b.body, { dmg: b.maxHp * 0.02, kind: 'blast', x: b.x, y: b.y - 30, from: 'player' });
+    expect(b.phase).toBe(1);
+    w.step(1 / 60, inp);
+    expect(b.inTransition).toBe(true);
+    b.hookCut(w);
+    b.stagger(w);
+    b.addPoise(w, 999);
+    for (let i = 0; i < 60 * 4; i++) w.step(1 / 60, inp);
+    expect(b.invuln).toBe(false);
+    expect(b.inTransition).toBe(false);
+    const hp = b.hp;
+    w.damage(b.body, { dmg: 50, kind: 'blast', x: b.x, y: b.y - 30, from: 'player' });
+    expect(b.hp).toBeLessThan(hp);
+  });
+
+  it('a phase change during a stagger waits for the stagger to end', () => {
+    const def = BOSS_DEFS.gearjaw!;
+    const w = new World(def.arena, 1, 2);
+    w.player = new Player(newLoadout('arc'), 320, 300);
+    def.arena.setup(w);
+    const b = def.make(w, 1);
+    w.boss = b;
+    w.state = 'fight';
+    const inp = emptyInput();
+    for (let i = 0; i < 30; i++) w.step(1 / 60, inp);
+    b.hp = b.maxHp * 0.62;
+    w.damage(b.parts[0], { dmg: b.maxHp * 0.05, kind: 'crush', x: b.x, y: b.y - 30, poise: 999, from: 'env' });
+    expect(b.staggered).toBe(true);
+    for (let i = 0; i < 60; i++) w.step(1 / 60, inp);
+    expect(b.staggered).toBe(true);
+    for (let i = 0; i < 60 * 3; i++) w.step(1 / 60, inp);
+    expect(b.staggered).toBe(false);
+  });
+});

@@ -67,7 +67,7 @@ class StockLegs extends Legs {
     }
     if (!this.active) return false;
     this.t += dt;
-    const sp = 430 * (1 - this.t / 0.2);
+    const sp = 720 * (1 - this.t / 0.2);
     w.moveCircle(p, this.dx * sp * dt, this.dy * sp * dt);
     p.vx = this.dx * 110;
     p.vy = this.dy * 110;
@@ -195,7 +195,7 @@ class SlideLegs extends Legs {
     }
     if (!this.active) return false;
     this.t += dt;
-    const sp = 380 - 220 * (this.t / this.dur);
+    const sp = 520 - 300 * (this.t / this.dur);
     const enemies = w.bodies.filter((b) => b.team === 'enemy');
     w.moveCircle(p, this.dx * sp * dt, this.dy * sp * dt, { ignore: enemies });
     p.vx = this.dx * sp * 0.3;
@@ -279,6 +279,8 @@ class GrappleArm extends Arm {
   private target: Body | null = null;
   private zipTo: { x: number; y: number } | null = null;
   private heldT = 0;
+  private lastZipD = Infinity;
+  private pullT = 0;
 
   update(w: World, p: Player, inp: InputState, dt: number, can: boolean): void {
     if (this.cd > 0 && this.st === 'idle') this.cd -= dt;
@@ -307,6 +309,8 @@ class GrappleArm extends Arm {
       case 'pulling': {
         const b = this.target;
         if (!b || b.dead) { this.finish(); break; }
+        this.pullT += dt;
+        if (this.pullT > 1) { this.finish(); break; } // prop snagged behind something
         const [nx, ny] = norm(p.x - b.x, p.y - b.y);
         b.vx = nx * 430; b.vy = ny * 430;
         this.hx = b.hx; this.hy = b.hy;
@@ -324,7 +328,9 @@ class GrappleArm extends Arm {
         const d = dist(p.x, p.y, t.x, t.y);
         const [nx, ny] = norm(t.x - p.x, t.y - p.y);
         const sp = 520;
-        if (d < 6 || d < sp * dt) {
+        const stuck = this.lastZipD - d < sp * dt * 0.25 && this.travelled > 0;
+        this.lastZipD = d;
+        if (d < 6 || d < sp * dt || stuck) {
           p.forced = null;
           this.arrive(w, p);
         } else {
@@ -347,14 +353,14 @@ class GrappleArm extends Arm {
       this.travelled += (sp * dt) / 4;
       if (w.pointInWall(this.hx, this.hy)) {
         this.hx -= this.dx * 4; this.hy -= this.dy * 4;
-        this.startZip(w, p, this.hx, this.hy + 6, null);
+        this.startZip(w, p, this.hx - this.dx * (p.r + 3), this.hy - this.dy * (p.r + 3) + 9, null);
         return;
       }
       for (const b of w.bodies) {
         if (b.dead || !b.targetable && !b.interactable) continue;
         if (dist(this.hx, this.hy, b.hx, b.hy) > b.hr + 5) continue;
         if (b.interactable && b.onInteract) { b.onInteract(w); this.st = 'retract'; w.sfx('click'); return; }
-        if (b.grapple === 'pull' && b.mass > 0) { this.target = b; this.st = 'pulling'; w.sfx('click'); return; }
+        if (b.grapple === 'pull' && b.mass > 0) { this.target = b; this.st = 'pulling'; this.pullT = 0; w.sfx('click'); return; }
         if (b.team === 'enemy' || b.grapple === 'anchor' || b.solid) {
           const [nx, ny] = norm(p.x - b.x, p.y - b.y);
           const stop = b.r + p.r + 4;
@@ -368,6 +374,7 @@ class GrappleArm extends Arm {
 
   private startZip(w: World, p: Player, x: number, y: number, b: Body | null): void {
     this.st = 'zipping';
+    this.lastZipD = Infinity;
     this.zipTo = { x, y };
     this.target = b;
     this.travelled = 0;
@@ -516,8 +523,8 @@ class JackArm extends Arm {
     let px = p.handX, py = p.handY;
     for (let i = 1; i <= n; i++) {
       const t = i / n;
-      const x = p.handX + (c.b.hx - p.handX) * t + (i < n ? w.rng.range(-3, 3) : 0);
-      const y = p.handY + (c.b.hy - p.handY) * t + (i < n ? w.rng.range(-3, 3) : 0);
+      const x = p.handX + (c.b.hx - p.handX) * t + (i < n ? w.vrng.range(-3, 3) : 0);
+      const y = p.handY + (c.b.hy - p.handY) * t + (i < n ? w.vrng.range(-3, 3) : 0);
       g.line(px, py, x, y, 1, P.acid, 0.9, 'top');
       px = x; py = y;
     }

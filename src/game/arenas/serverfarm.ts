@@ -320,7 +320,8 @@ export class ConduitBox extends Body {
   /** Hit by one of the hydra's beams. */
   beamHit(w: World): void { if (this.ready) this.fire(w); }
   hurt(w: World, h: Hit): number {
-    if (h.from === 'enemy') { this.beamHit(w); return 0; }
+    // only the hydra's beams trip a conduit (they call beamHit directly); stray bullets do not
+    if (h.from === 'enemy') return 0;
     if (h.dmg <= 0 || h.quiet || this.hitT > 0) return 0;
     this.hitT = 0.06;
     this.flash = 0.05;

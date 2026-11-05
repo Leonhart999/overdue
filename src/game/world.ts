@@ -9,7 +9,7 @@ import { audio, type SfxName } from '../engine/audio';
 import { COL, P, type Gfx } from '../engine/gfx';
 import type { InputState } from '../engine/input';
 import { angleDiff, clamp, dist, pointInRect, rayCircle, rayRect, Rng, type Rect } from '../engine/math';
-import type { Boss } from './boss';
+import { JAM_SLOW, type Boss } from './boss';
 import type { Body } from './body';
 import type { Bullet } from './bullet';
 import { Fx } from './fx';
@@ -46,6 +46,8 @@ export interface HitPlayerOpts {
   kind?: string;
   /** Knockback speed applied to the player on a real hit. */
   knock?: number;
+  /** Floor damage that ticks every step (fire, live water): dashing through it is not a perfect dodge. */
+  perfectable?: boolean;
 }
 
 export type PlayerHitResult = 'hit' | 'dodged' | 'ignored';
@@ -68,6 +70,10 @@ export class World {
   /** When true the player ignores timeScale (reflex booster). */
   playerUnscaled = false;
   hitstop = 0;
+  /** True when the last step was skipped by hitstop (input edges must not be cleared). */
+  frozen = false;
+  /** RNG for visuals only (lightning jitter...), so drawing never changes the simulation. */
+  readonly vrng = new Rng(4242);
   readonly rng: Rng;
   readonly fx = new Fx();
 
@@ -123,6 +129,8 @@ export class World {
     this.input = input;
     this.realTime += dt;
     this.fx.update(dt);
+    // during hitstop nothing reads input, so the scene must keep this step's presses (see `frozen`)
+    this.frozen = this.hitstop > 0;
     if (this.hitstop > 0) { this.hitstop -= dt; return; }
     if (this.slowT > 0) {
       this.slowT -= dt;
@@ -136,9 +144,11 @@ export class World {
     this.player.update(this, input, this.playerUnscaled ? dt : wdt);
     if (this.boss && this.state !== 'intro') this.boss.update(this, wdt);
     for (const b of this.bodies) if (!b.dead) b.update(this, wdt);
-    for (const b of this.bullets) if (!b.dead) b.update(this, wdt);
+    // a jammed boss is slowed as a whole: its own bullets and telegraphs too
+    const jam = this.boss && this.boss.jamT > 0 && !this.boss.dying ? JAM_SLOW : 1;
+    for (const b of this.bullets) if (!b.dead) b.update(this, b.team === 'enemy' ? wdt * jam : wdt);
     this.cancelSoftBullets();
-    for (const h of this.hazards) if (!h.dead) h.update(this, wdt);
+    for (const h of this.hazards) if (!h.dead) h.update(this, h.owner && h.owner === this.boss ? wdt * jam : wdt);
     this.updateZones(wdt);
     this.arena.update?.(this, wdt);
     for (const o of this.objects) if (!o.dead) o.update(this, wdt);
@@ -168,7 +178,7 @@ export class World {
         const rr = c.r + e.r + 2;
         if ((c.x - e.x) ** 2 + (c.y - e.y) ** 2 <= rr * rr) {
           e.dead = true;
-          c.dead = true;
+          if (c.pierce !== Infinity) c.dead = true; // the slug keeps going ("穿透一切")
           this.fx.burst(e.x, e.y, 4, COL.soft, 50, 0.2, 1);
           this.sfx('pop');
           break;
@@ -182,7 +192,7 @@ export class World {
     for (const z of this.zones) {
       z.update(this, dt);
       if (z.burning > 0) {
-        if (!p.airborne && z.contains(p.x, p.y, 2)) this.hitPlayer(1, { low: true, kind: 'fire', x: p.x, y: p.y });
+        if (!p.airborne && z.contains(p.x, p.y, 2)) this.hitPlayer(1, { low: true, kind: 'fire', x: p.x, y: p.y, perfectable: false });
         for (const b of this.bodies) {
           if (b.dead) continue;
           if (!z.contains(b.x, b.y, b.r * 0.5)) continue;
@@ -193,7 +203,7 @@ export class World {
         for (const o of this.zones) if (o !== z && o.kind === 'oil' && o.burning <= 0 && zonesTouch(z, o)) o.ignite();
       }
       if (z.electrified > 0) {
-        if (!p.airborne && z.contains(p.x, p.y, 0)) this.hitPlayer(1, { low: true, kind: 'shock', x: p.x, y: p.y });
+        if (!p.airborne && z.contains(p.x, p.y, 0)) this.hitPlayer(1, { low: true, kind: 'shock', x: p.x, y: p.y, perfectable: false });
         for (const b of this.bodies) {
           if (!b.dead && z.contains(b.x, b.y, 0)) b.onShock?.(this, 40, dt);
         }

@@ -197,7 +197,7 @@ export class Gearjaw extends Boss {
     this.hookLost = 6;
     w.fx.label(this.x, this.y - 70, '钢缆切断', P.white, 1);
     this.addPoise(w, 45);
-    if (!this.staggered) this.script = this.stumble();
+    if (!this.staggered && !this.inTransition) this.setScript(this.stumble());
   }
 
   private *stumble(): Script {
@@ -215,7 +215,10 @@ export class Gearjaw extends Boss {
   onStaggerEnd(): void { this.anim = 'idle'; }
 
   // ------------------------------------------------------------------ per-step
+  private lastDt = 1 / 60;
+
   think(w: World, dt: number): void {
+    this.lastDt = dt;
     this.animClock += dt;
     if (this.revT > 0) this.revT -= dt;
     if (this.hookLost > 0) this.hookLost -= dt;
@@ -267,7 +270,7 @@ export class Gearjaw extends Boss {
       this.moveY = ny * speed * k;
       // slow turning: the player gets windows behind him
       if (this.targetSide() !== this.facing) {
-        this.turnT += 1 / 60;
+        this.turnT += this.lastDt;
         if (this.turnT > (this.phase === 0 ? 0.8 : 0.45)) { this.facing = this.targetSide(); this.turnT = 0; }
       } else this.turnT = 0;
       yield;
@@ -310,6 +313,7 @@ export class Gearjaw extends Boss {
     this.moveX = this.moveY = 0;
     this.invuln = true;
     this.anim = 'hurt';
+    try {
     if (phase === 1) {
       this.plates = 0;
       w.fx.label(this.x, this.y - 72, '装甲炸飞', P.orange, 1.4);
@@ -324,9 +328,11 @@ export class Gearjaw extends Boss {
       w.sfx('rev');
       for (let i = 0; i < 8; i++) { w.fx.smoke(this.x, this.y - 60, 3, P.slate, 6, 40); yield* this.wait(0.1); }
     }
-    this.updateStatus();
-    this.invuln = false;
-    this.anim = 'idle';
+    } finally {
+      this.updateStatus();
+      this.invuln = false;
+      this.anim = 'idle';
+    }
     yield* this.wait(0.4);
   }
 
@@ -368,7 +374,7 @@ export class Gearjaw extends Boss {
         return res.t;
       };
       let L = lane();
-      const hz = this.hazard({ k: 'line', x1: this.x, y1: this.y, x2: this.x + dx * L, y2: this.y + dy * L, w: 50 }, windup, 0, (h) => {
+      const hz = this.hazard({ k: 'line', x1: this.x, y1: this.y, x2: this.x + dx * L, y2: this.y + dy * L, w: 70 }, windup, 0, (h) => {
         h.hitsPlayer = false;
         h.onTick = (_w, hh) => {
           if (hh.t < windup * 0.45) {
@@ -392,8 +398,12 @@ export class Gearjaw extends Boss {
       const speed = 400 * this.bulletMul;
       let hitPlayer = false;
       let crashed: 'wall' | 'pillar' | null = null;
-      for (let t = 0; t < 2.5 && !crashed; t += 1 / 60) {
-        const step = speed / 60;
+      const start = this.clock;
+      let last = this.clock;
+      for (let t = 0; t < 2.5 && !crashed; t = this.clock - start) {
+        const sdt = this.clock - last || 1 / 60;
+        last = this.clock;
+        const step = speed * sdt;
         // solid neutral obstacles directly ahead
         for (const b of w.bodies) {
           if (b.dead || b.team !== 'neutral') continue;
@@ -416,7 +426,7 @@ export class Gearjaw extends Boss {
           if (this.trailD > 22) { this.trailD = 0; w.objects.push(new FirePatch(this.x - dx * 20, this.y - dy * 10, 11, 3.5, 'enemy')); }
         }
         if (w.rng.chance(0.6)) w.fx.burst(this.x - dx * 30, this.y, 1, P.umber, 40, 0.4, 2);
-        if (Math.floor(t * 60) % 6 === 0) w.fx.shake(1.5, 0.05);
+        if (Math.floor(t * 10) % 2 === 0) w.fx.shake(1.5, 0.05);
         yield;
       }
       this.charging = false;
@@ -461,6 +471,7 @@ export class Gearjaw extends Boss {
     const w = this.w;
     this.anim = 'attack';
     this.hazard({ k: 'circle', x: this.x, y: this.y, r: 40 }, this.tele(0.55), 0, (h) => { h.hitsPlayer = false; });
+    this.hazard({ k: 'ring', x: this.x, y: this.y, r: 150, w: 2 }, this.tele(0.55), 0, (h) => { h.hitsPlayer = false; });
     w.sfx('telegraph');
     yield* this.wait(this.tele(0.55));
     const R0 = 30, R1 = 150, dur = 0.65;
@@ -490,7 +501,6 @@ export class Gearjaw extends Boss {
     const R = 76;
     const warn = this.tele(1.1);
     this.hazard({ k: 'circle', x: this.x, y: this.y - 6, r: R }, warn, 0.45, (h) => {
-      h.color = P.orange;
       h.onActivate = (ww) => {
         for (let i = 0; i < 40; i++) {
           const a = ww.rng.next() * Math.PI * 2, r = ww.rng.next() * R;

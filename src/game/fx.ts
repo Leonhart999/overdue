@@ -105,7 +105,13 @@ export class Fx {
   }
 
   label(x: number, y: number, text: string, c: number = P.amber, dur = 0.9): void {
-    this.labels.push({ x, y, text, t: 0, dur, c });
+    // stack labels that would overlap a fresh one at the same spot
+    let yy = y;
+    for (let i = 0; i < 4; i++) {
+      if (!this.labels.some((l) => l.t < 0.5 && Math.abs(l.x - x) < 40 && Math.abs(l.y - yy) < 12)) break;
+      yy -= 13;
+    }
+    this.labels.push({ x, y: yy, text, t: 0, dur, c });
   }
 
   ghost(key: string, frame: string | number, x: number, y: number, o: ImgOpts, dur = 0.25): void {

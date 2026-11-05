@@ -107,7 +107,7 @@ export class FightScene extends Phaser.Scene {
     while (this.acc >= DT && steps < 5) {
       if (this.bot && w.state === 'fight') this.bot.update(w, inp, DT);
       w.step(DT, inp);
-      clearEdges(inp);
+      if (!w.frozen) clearEdges(inp);
       this.acc -= DT;
       steps++;
     }

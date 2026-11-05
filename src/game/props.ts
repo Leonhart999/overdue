@@ -86,7 +86,7 @@ export class Pillar extends Body {
   constructor(x: number, y: number, public frame = 'pillar') {
     super();
     this.x = x; this.y = y;
-    this.r = 9; this.hz = 18; this.hr = 10;
+    this.r = 9; this.hz = 18; this.hr = 13;
     this.mass = 0;
     this.solid = true;
     this.blocksShots = true;

@@ -30,10 +30,13 @@ export class KeyboardMouseInput {
       if (p.rightButtonDown()) { if (!st.alt) st.altPressed = true; st.alt = true; }
       if (p.leftButtonDown()) { if (!st.fire) st.firePressed = true; st.fire = true; }
     });
-    scene.input.on('pointerup', (p: Phaser.Input.Pointer) => {
+    const up = (p: Phaser.Input.Pointer) => {
       if (st.alt && !p.rightButtonDown()) { st.alt = false; st.altReleased = true; }
       if (st.fire && !p.leftButtonDown()) { st.fire = false; st.fireReleased = true; }
-    });
+    };
+    scene.input.on('pointerup', up);
+    // released while the cursor is outside the canvas: Phaser only sends pointerupoutside
+    scene.input.on('pointerupoutside', up);
     // Losing focus must not leave buttons stuck down.
     scene.game.events.on(Phaser.Core.Events.BLUR, () => {
       if (st.fire) st.fireReleased = true;

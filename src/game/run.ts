@@ -45,6 +45,8 @@ export interface RunState {
   records: FightRecord[];
   /** Loans that apply to the next fight. */
   pendingLoans: LoanId[];
+  /** Hearts restored by the last post-fight repair (the "no repair" loan takes them back). */
+  lastRepair?: number;
   startedAt: number;
 }
 
@@ -126,7 +128,9 @@ export function finishFight(run: RunState, rec: FightRecord, hpLeft: number): vo
   run.records.push(rec);
   const skipHeal = run.pendingLoans.includes('loan_heal');
   run.pendingLoans = [];
+  const before = Math.min(effectiveMaxHp(run.loadout), hpLeft);
   run.loadout.hp = Math.min(effectiveMaxHp(run.loadout), hpLeft + (skipHeal ? 0 : 2));
+  run.lastRepair = run.loadout.hp - before;
   run.index++;
 }
 

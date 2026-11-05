@@ -53,6 +53,8 @@ export class Crane {
   dead = false;
   private barrelT = 6;
   private incoming: { x: number; y: number; t: number }[] = [];
+  /** Hacked drops race the trolley to the crosshair before falling. */
+  private hackTo: { x: number; y: number } | null = null;
 
   update(w: World, dt: number): void {
     if (this.dropT < 0 && this.fallT < 0) {
@@ -65,13 +67,18 @@ export class Crane {
     }
     if (this.dropT >= 0) {
       this.dropT += dt;
+      if (this.hackTo) {
+        const dx = this.hackTo.x - this.x, dy = this.hackTo.y - this.y, d = Math.hypot(dx, dy);
+        const step = 700 * dt;
+        if (d <= step) { this.x = this.hackTo.x; this.y = this.hackTo.y; } else { this.x += (dx / d) * step; this.y += (dy / d) * step; }
+      }
       this.sirenT -= dt;
       if (this.sirenT <= 0) { w.sfx('siren', 0.6); this.sirenT = 0.75; }
       if (this.dropT >= this.warn) { this.dropT = -1; this.fallT = 0; }
     }
     if (this.fallT >= 0) {
       this.fallT += dt;
-      if (this.fallT >= this.fall) { this.fallT = -1; this.crush(w); }
+      if (this.fallT >= this.fall) { this.fallT = -1; this.crush(w); this.hackTo = null; }
     }
     // P3: barrel resupply
     if (w.boss && w.boss.phase >= 2 && !w.boss.dying) {
@@ -100,7 +107,9 @@ export class Crane {
       w.fx.label(this.x, this.y - 70, this.loaded ? '正在落下' : `装货中 ${Math.ceil(this.reloadT)}s`, P.fog, 0.8);
       return false;
     }
-    this.dropT = hacked ? this.warn * 0.4 : 0;
+    // hacked: the trolley rushes to the crosshair, then gives the normal warning there
+    this.dropT = 0;
+    if (hacked) { const [hx, hy] = w.clampToBounds(w.input.ax, w.input.ay, 24); this.hackTo = { x: hx, y: hy }; }
     this.sirenT = 0;
     w.fx.label(this.x, this.y - 74, '吊车落下', COL.interact, 1);
     return true;

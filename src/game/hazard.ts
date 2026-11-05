@@ -226,7 +226,7 @@ export class FirePatch {
     }
     const p = w.player;
     if (this.team !== 'player' && !p.airborne && (p.x - this.x) ** 2 + ((p.y - this.y) * 1.25) ** 2 < (this.r + 2) ** 2) {
-      w.hitPlayer(1, { low: true, kind: 'fire', x: p.x, y: p.y });
+      w.hitPlayer(1, { low: true, kind: 'fire', x: p.x, y: p.y, perfectable: false });
     }
     for (const b of w.bodies) {
       if (b.dead) continue;

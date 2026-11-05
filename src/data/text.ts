@@ -45,7 +45,7 @@ export const CYBER_TEXT: Record<CyberId, { name: string; desc: string }> = {
   legs_slide: { name: '液压滑铲', desc: '冲刺变成 130 像素的滑铲。滑铲中可以开火，铲飞物体，穿过头目并造成伤害。' },
   arm_shove: { name: '推掌', desc: 'Q：前方锥形冲击，推开物体，击碎软弹。冷却 2.5 秒。' },
   arm_grapple: { name: '抓钩', desc: 'Q：钩到油桶就拽到手里，再按 Q 扔出去；钩到墙、柱子或头目就把自己拉过去（途中无敌）；能远程拉动拉杆。' },
-  arm_fist: { name: '液压拳', desc: 'Q：按住蓄力，松开出拳。击飞物体、打掉护甲、把子弹打回去（软硬都行）。满蓄力伤害 70。' },
+  arm_fist: { name: '液压拳', desc: 'Q：按住蓄力，松开出拳。击飞物体、把子弹打回去（软硬都行）。蓄力过半打掉护甲。满蓄力伤害 70。' },
   arm_jack: { name: '骇入臂', desc: 'Q：骇入准星附近的设备（吊车、拉杆、投影仪、接线盒）；对准头目则让它 4 秒内整体变慢 30%。冷却 8 秒。' },
   core_none: { name: '空', desc: '' },
   core_plating: { name: '反应装甲', desc: '+1 格护盾。10 秒没受伤就恢复。' },
@@ -73,6 +73,7 @@ export const BOSS_TEXT: Record<BossId, { name: string; en: string; place: string
   gearjaw: { name: '齿颚', en: 'GEARJAW', place: '锈港 · 回收场' },
   lux: { name: '卢克丝夫人', en: 'MADAME LUX', place: '霓虹集市 · 夜店舞台' },
   octohydra: { name: '八头蛇', en: 'OCTOHYDRA', place: '下网 · 淹水机房' },
+  kade: { name: '凯德主管', en: 'DIRECTOR KADE', place: 'Skyline 区 · 天台停机坪' },
 };
 
 export const UI = {

@@ -31,6 +31,8 @@ export class PhaserGfx implements Gfx {
   private nImg = 0;
   private texts: Phaser.GameObjects.Text[] = [];
   private nText = 0;
+  private uiTexts: Phaser.GameObjects.Text[] = [];
+  private nUiText = 0;
   private g: Record<Exclude<Layer, 'world'>, Phaser.GameObjects.Graphics>;
   private order = { floor: 0, top: 0, light: 0, ui: 0, text: 0 };
   private dark: Phaser.GameObjects.RenderTexture;
@@ -61,6 +63,7 @@ export class PhaserGfx implements Gfx {
   begin(): void {
     this.nImg = 0;
     this.nText = 0;
+    this.nUiText = 0;
     this.order = { floor: 0, top: 0, light: 0, ui: 0, text: 0 };
     for (const k of Object.keys(this.g) as (keyof typeof this.g)[]) this.g[k].clear();
     this.darkUsed = false;
@@ -69,6 +72,7 @@ export class PhaserGfx implements Gfx {
   end(): void {
     for (let i = this.nImg; i < this.imgs.length; i++) if (this.imgs[i].visible) this.imgs[i].setVisible(false);
     for (let i = this.nText; i < this.texts.length; i++) if (this.texts[i].visible) this.texts[i].setVisible(false);
+    for (let i = this.nUiText; i < this.uiTexts.length; i++) if (this.uiTexts[i].visible) this.uiTexts[i].setVisible(false);
     if (!this.darkUsed && this.dark.visible) this.dark.setVisible(false);
   }
 
@@ -85,7 +89,7 @@ export class PhaserGfx implements Gfx {
       const gk = this.glyphKey(key, flipX);
       if (gk && this.scene.textures.get(gk).has(String(frame))) { key = gk; flipX = false; }
     }
-    if (im.texture.key !== key || im.frame.name !== String(frame)) im.setTexture(key, frame);
+    if (im.texture.key !== key || String(im.frame.name) !== String(frame)) im.setTexture(key, frame);
     im.setVisible(true);
     im.setPosition(Math.round(x), Math.round(y));
     im.setOrigin(o.ox ?? 0.5, o.oy ?? 1);
@@ -111,13 +115,16 @@ export class PhaserGfx implements Gfx {
   }
 
   text(str: string, x: number, y: number, o: TextOpts = {}): void {
-    let t = this.texts[this.nText];
+    // HUD text has its own pool so world labels coming and going don't shift (and re-render) it
+    const ui = (o.layer ?? 'top') === 'ui';
+    const pool = ui ? this.uiTexts : this.texts;
+    const n = ui ? this.nUiText++ : this.nText++;
+    let t = pool[n];
     if (!t) {
       t = this.scene.add.text(0, 0, '', { fontFamily: 'FusionPixel', fontSize: '12px', color: '#ffffff' });
       t.setResolution(1);
-      this.texts.push(t);
+      pool.push(t);
     }
-    this.nText++;
     const color = hex(o.color ?? 0xf5f6ff);
     if (t.text !== str) t.setText(str);
     if (t.style.color !== color) t.setColor(color);
@@ -227,6 +234,7 @@ export class PhaserGfx implements Gfx {
     if (!rects.length) rects.push({ x: 0, y: 0, w, h });
     return glyphSheet(src, w, h, rects, flip).map((px, v) => {
       const gk = `${key}~glyph${flip ? 'f' : ''}${v}`;
+      if (tm.exists(gk)) return gk; // survives dev hot reloads
       const c = document.createElement('canvas');
       c.width = w;
       c.height = h;

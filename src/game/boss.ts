@@ -22,6 +22,9 @@ import type { BossId } from './loadout';
 import type { Hit, Shape } from './types';
 import type { World } from './world';
 
+/** Time scale applied to a jammed boss and its own bullets and telegraphs (jack arm). */
+export const JAM_SLOW = 0.7;
+
 export class BossPart extends Body {
   /** Damage multiplier for this part (heads, cores...). */
   dmgMul = 1;
@@ -69,6 +72,10 @@ export abstract class Boss implements Clocked {
   poise = 0;
   poiseMax = 100;
   private lastHitAt = -9;
+  /** True while a phase transition script runs: no stagger, no script replacement. */
+  inTransition = false;
+  /** Phase whose transition waits for the current stagger to end. */
+  private pendingPhase = 0;
   staggerT = 0;
   staggerDur = 3;
   /** Temporary incoming-damage multiplier (cooling vents, blackouts). */
@@ -131,7 +138,7 @@ export abstract class Boss implements Clocked {
       }
       return;
     }
-    if (this.jamT > 0) { this.jamT -= dt; dt *= 0.7; }
+    if (this.jamT > 0) { this.jamT -= dt; dt *= JAM_SLOW; }
     this.clock += dt;
     for (const p of this.parts) if (p.flash > 0) p.flash -= dt;
     if (this.clock - this.lastHitAt > 2 && this.staggerT <= 0) this.poise = Math.max(0, this.poise - 25 * dt);
@@ -141,14 +148,36 @@ export abstract class Boss implements Clocked {
       if (w.rng.chance(dt * 8)) w.fx.sparks(this.x + w.rng.range(-20, 20), this.y - 30 + w.rng.range(-15, 15), 3, P.amber, 80);
       if (this.staggerT <= 0) {
         this.poise = 0;
-        this.script = null;
+        this.setScript(null);
         this.onStaggerEnd(w);
+        if (this.pendingPhase) { const ph = this.pendingPhase; this.pendingPhase = 0; this.beginPhase(w, ph); }
       }
       return;
     }
     if (!this.script) this.script = this.brain(w);
-    if (this.script.next().done) this.script = null;
+    const s = this.script;
+    this.running = s;
+    const r = s.next();
+    this.running = null;
+    if (this.script === s) { if (r.done) this.script = null; }
+    else if (!r.done) s.return(); // replaced from inside itself (e.g. a ram that ends in a stagger)
   }
+
+  /** The generator currently executing (it cannot be closed until it yields). */
+  private running: Script | null = null;
+
+  /**
+   * Replace the running script. The old generator is closed with return(), so its `finally`
+   * blocks run (transitions use them to clear invuln and similar flags).
+   */
+  setScript(s: Script | null): void {
+    const old = this.script;
+    this.script = s;
+    if (old && old !== s && old !== this.running) old.return();
+  }
+
+  /** Mark that the boss was hit (keeps poise from decaying). Bosses that route damage themselves call this. */
+  noteHit(): void { this.lastHitAt = this.clock; }
 
   takeHit(w: World, part: BossPart, h: Hit): number {
     if (this.dying || this.defeated) return 0;
@@ -186,17 +215,17 @@ export abstract class Boss implements Clocked {
   }
 
   addPoise(w: World, amount: number): void {
-    if (this.staggerT > 0 || this.dying) return;
+    if (this.staggerT > 0 || this.dying || this.inTransition) return;
     this.poise += amount;
     if (this.poise >= this.poiseMax) this.stagger(w);
   }
 
   stagger(w: World, dur = this.staggerDur): void {
-    if (this.dying) return;
+    if (this.dying || this.inTransition) return;
     this.staggerT = dur;
     this.poise = this.poiseMax;
     this.cancelAttacks(w);
-    this.script = null;
+    this.setScript(null);
     w.stats.staggers++;
     w.fx.label(this.x, this.y - 70, '瘫痪', P.amber, 1.2);
     w.fx.shake(4, 0.2);
@@ -209,15 +238,23 @@ export abstract class Boss implements Clocked {
     for (const h of w.hazards) if (h.owner === this && h.warning && h.cancelable) h.dead = true;
   }
 
-  private enterPhase(w: World, phase: number): void {
+  private enterPhase(w: World, phase: number): void { this.beginPhase(w, phase); }
+
+  /**
+   * Run the transition for `phase` (already set in this.phase), then the brain.
+   * If the boss is staggered, the transition waits until the stagger ends so a stagger is
+   * never cut short by a phase change (e.g. the crane drop that also crosses a threshold).
+   */
+  beginPhase(w: World, phase: number): void {
+    if (this.staggerT > 0) { this.pendingPhase = Math.max(this.pendingPhase, phase); return; }
     this.cancelAttacks(w);
-    this.staggerT = 0;
     this.poise = 0;
     const self = this;
-    this.script = (function* () {
-      yield* self.transition(w, phase);
+    this.setScript((function* () {
+      self.inTransition = true;
+      try { yield* self.transition(w, phase); } finally { self.inTransition = false; }
       yield* self.brain(w);
-    })();
+    })());
     w.sfx('phase');
     w.fx.shake(5, 0.4);
   }
@@ -230,7 +267,7 @@ export abstract class Boss implements Clocked {
   die(w: World): void {
     this.dying = true;
     this.hp = 0;
-    this.script = null;
+    this.setScript(null);
     this.cancelAttacks(w);
     for (const h of w.hazards) if (h.owner === this) h.dead = true;
     for (const b of w.bullets) if (b.team === 'enemy') b.dead = true;

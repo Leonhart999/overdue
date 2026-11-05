@@ -42,7 +42,7 @@ export const WEAPON_MODS: Record<WeaponId, ModId[]> = {
   blade: ['blade_return', 'blade_afterimage'],
 };
 
-export type BossId = 'gearjaw' | 'lux' | 'octohydra';
+export type BossId = 'gearjaw' | 'lux' | 'octohydra' | 'kade';
 
 export interface Loadout {
   weapon: WeaponId;
