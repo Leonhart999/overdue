@@ -197,6 +197,15 @@ export class PhaserGfx implements Gfx {
 
   glyphs(on: boolean): void { this.glyphOn = on; }
 
+  /** Build the mirrored glyph variants of every sheet built so far (call after a warm-up draw). */
+  warmGlyphFlips(): void {
+    for (const id of [...glyphTex.keys()]) {
+      const [key, f] = id.split('|');
+      const other = `${key}|${f === '1' ? 0 : 1}`;
+      if (!glyphTex.has(other)) glyphTex.set(other, this.buildGlyphs(key, f !== '1'));
+    }
+  }
+
   /** Current glyph variant of a texture (variants cycle every 100 ms), built on first use. */
   private glyphKey(key: string, flip: boolean): string | null {
     const id = `${key}|${flip ? 1 : 0}`;

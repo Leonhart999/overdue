@@ -68,6 +68,7 @@ export class FightScene extends Phaser.Scene {
     w.boss = def.make(w, this.data0.tier);
     w.input = this.kbm.state;
     this.world = w;
+    this.warmGlyphs();
     this.musicOn = false;
     this.input.setDefaultCursor('none');
     main.fadeIn(250, 5, 4, 10);
@@ -78,6 +79,24 @@ export class FightScene extends Phaser.Scene {
       this.world.player.weapon.dispose();
     });
     if (import.meta.env.DEV) (window as unknown as { __od: Record<string, unknown> }).__od.world = w;
+  }
+
+  /**
+   * Build the jack-arm glyph textures now (hidden under the fade-in) instead of on the first hack:
+   * draw one frame with every body in glyph mode, then build the mirrored variants too.
+   */
+  private warmGlyphs(): void {
+    const w = this.world, b = w.boss!;
+    const jam = b.jamT;
+    const saved = w.bodies.map((o) => o.glyphUntil);
+    b.jamT = 1;
+    for (const o of w.bodies) o.glyphUntil = w.time + 1;
+    this.gfx.begin();
+    w.draw(this.gfx);
+    this.gfx.end();
+    this.gfx.warmGlyphFlips();
+    b.jamT = jam;
+    w.bodies.forEach((o, i) => { o.glyphUntil = saved[i]; });
   }
 
   update(_time: number, delta: number): void {
