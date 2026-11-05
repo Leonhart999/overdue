@@ -6,6 +6,17 @@ Top-down boss-rush roguelite. Only boss fights: every arena has things you can u
 
 Built from the assets of CHROME DEBT (`D:\AI\projects\chrome-debt`, tag `m1-paused`).
 
+## Bosses
+
+| Boss | Arena | Use the arena |
+|---|---|---|
+| Gearjaw 齿颚 | Rustport scrapyard | crane drop (levers), barrels, ram him into pillars |
+| Madame Lux 卢克丝夫人 | Neon Bazaar club | breakers (blackout), projectors (clones), mirrors (reflect her laser) |
+| Octohydra 八头蛇 | Undernet flooded server room | conduits electrify the water and cauterise stumps, racks block beams |
+| Director Kade 凯德主管 | Skyline rooftop helipad | hack turrets, helicopter downdraft and crash, break searchlights, hit him behind the shield |
+
+Standees: `standee-preview.html`.
+
 ## Play
 
 Runs start and end in the hub (据点): weapon racks, a practice cyberware bench, a training dummy and turret, and the exit elevator.
