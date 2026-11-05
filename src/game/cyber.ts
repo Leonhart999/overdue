@@ -21,6 +21,9 @@ function dashDir(p: Player, inp: InputState): [number, number] {
 
 /** Is a ground circle free of walls and solid bodies? */
 function spotFree(w: World, x: number, y: number, r: number): boolean {
+  // never land outside the playable area (walls are only 64 px thick; blink reaches 84 px)
+  const bd = w.bounds;
+  if (x < bd.x + r || y < bd.y + r || x > bd.x + bd.w - r || y > bd.y + bd.h - r) return false;
   for (const wl of w.walls) {
     const cx = clamp(x, wl.x, wl.x + wl.w), cy = clamp(y, wl.y, wl.y + wl.h);
     if ((x - cx) ** 2 + (y - cy) ** 2 < r * r) return false;

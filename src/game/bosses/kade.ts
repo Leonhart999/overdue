@@ -26,7 +26,7 @@ import { COL, P, type Gfx } from '../../engine/gfx';
 import { angleDiff, angleTo, clamp, dist, norm, turnToward } from '../../engine/math';
 import type { Script } from '../../engine/script';
 import { Body } from '../body';
-import { Boss, BossPart, type HitTag } from '../boss';
+import { Boss, BossPart, JAM_SLOW, type HitTag } from '../boss';
 import type { Hazard } from '../hazard';
 import { helipad, PAD, padOf, Turret, type PadState } from '../arenas/helipad';
 import type { Hit } from '../types';
@@ -111,6 +111,7 @@ export class KadeDrone extends Body {
       gx = k.x + Math.cos(this.orbitA) * 46;
       gy = k.y + Math.sin(this.orbitA) * 32;
     }
+    [gx, gy] = w.clampToBounds(gx, gy, 24);
     // steer toward the goal; knockback velocity decays through the steering
     const [dx, dy] = [gx - this.x, gy - this.y];
     const want = this.mode === 'ring' ? 260 : 140;
@@ -126,6 +127,7 @@ export class KadeDrone extends Body {
     if (this.mode !== 'escort' || k.staggered || k.inTransition || k.dying || w.state !== 'fight') {
       if (this.aim && this.aim.warning) this.aim.dead = true;
       this.aim = null;
+      this.shotT = Math.max(this.shotT, k.tele(0.5) + 0.4);
       return;
     }
     this.shotT -= dt;
@@ -189,6 +191,8 @@ export class Kade extends Boss {
   private scanTurretHit = false;
   /** Clearance countdown (s left), -1 when not running. */
   clearT = -1;
+  /** The player stood in the downdraft at some point during the current scan. */
+  private scanDraft = false;
   private clearCd = 0;
   private sirenT = 0;
   private lastPick = '';
@@ -278,7 +282,7 @@ export class Kade extends Boss {
         this.shieldOffT = Math.max(this.shieldOffT, 1);
         w.fx.label(this.x, this.y - 56, '盾被打偏', P.amber, 0.9);
       }
-      if (h.kind === 'melee' && this.recoilCd <= 0) {
+      if (src === 'blade' && this.recoilCd <= 0) {
         // the blade bounces off: short recoil
         const p = w.player;
         const [nx, ny] = norm(p.x - this.x, p.y - this.y);
@@ -344,7 +348,8 @@ export class Kade extends Boss {
     }
     // keep the player out of the hull
     const p = w.player;
-    if (!this.airborne && !p.airborne && dist(p.x, p.y, this.x, this.y) < this.body.r + p.r) {
+    const sliding = p.legs.id === 'legs_slide' && p.legs.active;
+    if (!this.airborne && !p.airborne && !sliding && dist(p.x, p.y, this.x, this.y) < this.body.r + p.r) {
       const [nx, ny] = norm(p.x - this.x, p.y - this.y);
       p.x = this.x + nx * (this.body.r + p.r);
       p.y = this.y + ny * (this.body.r + p.r);
@@ -393,7 +398,10 @@ export class Kade extends Boss {
     w.sfx('siren', 0.6, 1.3);
     this.scanHaz = this.hazard({ k: 'circle', x: p.x, y: p.y, r: 14 }, this.tele(2.6), 0, (h) => {
       h.hitsPlayer = false;
-      h.onTick = (ww, hh) => { if (hh.shape.k === 'circle') { hh.shape.x = ww.player.x; hh.shape.y = ww.player.y; } };
+      h.onTick = (ww, hh) => {
+        if (hh.shape.k === 'circle') { hh.shape.x = ww.player.x; hh.shape.y = ww.player.y; }
+        if (this.pad && this.pad.inDowndraft(ww.player.x, ww.player.y)) this.scanDraft = true;
+      };
       h.onActivate = (ww) => this.resolveScan(ww);
     });
   }
@@ -401,7 +409,9 @@ export class Kade extends Boss {
   private resolveScan(w: World): void {
     const p = w.player;
     const pad = this.pad;
-    if (pad && pad.inDowndraft(p.x, p.y)) { w.fx.label(p.x, p.y - 24, '扫描被气流干扰', P.pale, 1.1); w.sfx('pop'); return; }
+    const draft = this.scanDraft || (pad && pad.inDowndraft(p.x, p.y));
+    this.scanDraft = false;
+    if (draft) { w.fx.label(p.x, p.y - 24, '扫描被气流干扰', P.pale, 1.1); w.sfx('pop'); return; }
     if (this.scanTurretHit) { w.fx.label(p.x, p.y - 24, '扫描被炮台打断', P.acid, 1.1); w.sfx('pop'); return; }
     const slot = w.rng.chance(0.5) ? 'legs' : 'arm';
     p.lockSlot(slot, 6);
@@ -415,7 +425,7 @@ export class Kade extends Boss {
     const pad = this.pad;
     if (this.clearT < 0) {
       if (this.clearCd > 0 && !this.staggered) this.clearCd -= dt;
-      if (this.phase >= 2 && this.hp <= this.maxHp * 0.1 && this.clearCd <= 0 && !this.staggered && !this.inTransition && !this.dying && w.state === 'fight') {
+      if (this.phase >= 2 && this.hp <= this.maxHp * 0.1 && this.clearCd <= 0 && !this.staggered && !this.inTransition && !this.dying && w.state === 'fight' && pad?.heli.state !== 'crash') {
         this.clearT = 12;
         this.sirenT = 0;
         w.fx.label(320, 80, '全面清场：12 秒后全场轰炸', COL.danger, 2);
@@ -430,6 +440,7 @@ export class Kade extends Boss {
     }
     if (this.dying) { this.clearT = -1; return; }
     this.clearT -= dt;
+    if (pad) pad.heli.forced = Math.max(pad.heli.forced, this.clearT / JAM_SLOW + 1.5);
     this.sirenT -= dt;
     if (this.sirenT <= 0) { w.sfx('siren', 0.7); this.sirenT = this.clearT < 3 ? 0.4 : 1; }
     if (this.clearT <= 0) this.bombard(w);
@@ -500,11 +511,15 @@ export class Kade extends Boss {
       const d = this.distToTarget();
       const ph = this.phase;
       const heli = this.pad?.heli;
+      // no leap while the player's legs are locked (the shockwave would be unavoidable),
+      // and no leap/bash while a console crash dives at him (he must not dodge the payoff)
+      const legsLocked = w.player.locked.legs > 0;
+      const diving = heli?.state === 'crash';
       const options: [string, number][] = [
-        ['bash', d > 70 ? 3 : 1.5],
+        ['bash', diving ? 0 : d > 70 ? 3 : 1.5],
         ['fan', 2.5],
         ['ring', this.liveDrones().length ? 2 : 0],
-        ['leap', ph >= 1 ? (d > 90 ? 2 : 1) : 0],
+        ['leap', ph >= 1 && !legsLocked && !diving ? (d > 90 ? 2 : 1) : 0],
         ['strafe', ph >= 2 && this.strafeCd <= 0 && heli && heli.state !== 'crash' && heli.forced <= 0 && this.clearT < 0 ? 5 : 0],
       ];
       for (const o of options) if (o[0] === this.lastPick) o[1] *= 0.3;
@@ -602,6 +617,13 @@ export class Kade extends Boss {
         for (const b of w.bodies) {
           if (b.dead || b.team !== 'neutral' || !b.solid) continue;
           if (dist(this.x + dx * step, this.y + dy * step, b.x, b.y) > this.body.r + b.r) continue;
+          const fuel = b as Body & { light?: (w: World, fuse: number) => void };
+          if (b.flammable && fuel.light) {
+            fuel.light(w, 0.6);
+            if (b.mass > 0) { b.push(dx * 400 - dy * 200, dy * 400 + dx * 200); continue; }
+            crashed = 'device';
+            break;
+          }
           if (b.mass === 0) { b.onRammed?.(w); crashed = 'device'; break; }
           if (b.onRammed?.(w)) { crashed = 'device'; break; }
           if (!b.dead) b.push(dx * 400 - dy * 200, dy * 400 + dx * 200);

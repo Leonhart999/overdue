@@ -163,7 +163,7 @@ export class Heli {
 
   private explodeCrash(w: World): void {
     const x = this.hx, y = this.hy;
-    w.explode(x, y, 60, { enemyDmg: 380, poise: 999, playerDmg: 2, from: 'env', src: 'heli', knock: 320 });
+    w.explode(x, y - 6, 60, { enemyDmg: 380, poise: 999, playerDmg: 2, from: 'env', src: 'heli', knock: 320 });
     w.fx.explosion(x - 20, y + 8, 30);
     w.fx.explosion(x + 22, y - 6, 26);
     w.fx.shake(10, 0.5);
@@ -816,8 +816,13 @@ function setup(w: World): void {
 function winch(w: World, left: boolean): void {
   const p = w.player, b = w.bounds;
   p.forced = null;
+  p.legs.active = false;
   p.iframes = 0;
-  p.invuln = 0;
+  if (p.invuln > 0) { // already hit this moment (bash knockback): no second heart for the fall
+    p.x = left ? b.x + 60 : b.x + b.w - 60; p.y = (PAD.gap.y0 + PAD.gap.y1) / 2; p.vx = p.vy = 0;
+    p.invuln = Math.max(p.invuln, 1.5);
+    return;
+  }
   const gy = (PAD.gap.y0 + PAD.gap.y1) / 2;
   const x = left ? b.x + 60 : b.x + b.w - 60;
   w.fx.label(p.x, p.y - 20, '坠落', COL.danger, 0.8);
