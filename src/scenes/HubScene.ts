@@ -10,6 +10,7 @@ import { clearEdges } from '../engine/input';
 import { KeyboardMouseInput } from '../engine/inputPhaser';
 import { BOSS_TEXT, CYBER_TEXT, SLOT_TEXT, WEAPON_TEXT } from '../data/text';
 import { makeHubArena } from '../game/arenas/hub';
+import { availableBosses } from '../game/bosses';
 import { CYBER_POOL, CYBER_SLOT, SLOTS, STOCK, WEAPONS, newLoadout, type CyberId, type Loadout, type Slot, type WeaponId } from '../game/loadout';
 import { Player } from '../game/player';
 import { newRun, nextFightParams, saveMeta } from '../game/run';
@@ -33,7 +34,7 @@ const HUB_MUSIC: MusicTrack = {
   wave: 'triangle',
 };
 
-type Overlay = 'bench' | 'records' | 'menu' | null;
+type Overlay = 'bench' | 'records' | 'menu' | 'sim' | null;
 
 /** Options per slot on the bench: stock part first, then every reward part of that slot. */
 function slotOptions(slot: Slot): CyberId[] {
@@ -77,6 +78,7 @@ export class HubScene extends Phaser.Scene {
       swapWeapon: (id) => this.swapWeapon(id),
       openBench: () => this.open('bench'),
       openRecords: () => this.open('records'),
+      openSim: () => this.open('sim'),
       depart: () => this.depart(),
     });
     const w = new World(arena, 1, 11);
@@ -143,6 +145,24 @@ export class HubScene extends Phaser.Scene {
     goto(this, 'Fight', { boss: p.boss, tier: p.tier, hpMul: p.hpMul, paceMul: p.paceMul }, 500);
   }
 
+  private simBoss = 0;
+  private simTier = 1;
+
+  /** Simulator: fight one boss with the current hub loadout (incl. practice cyberware). */
+  private startSim(): void {
+    if (this.leaving) return;
+    const ids = availableBosses();
+    const boss = ids[this.simBoss % ids.length];
+    this.leaving = true;
+    this.overlay = null;
+    const run = newRun(this.loadout.weapon);
+    run.order = [boss];
+    run.practice = true;
+    run.loadout.cyber = { ...this.loadout.cyber };
+    session.run = run;
+    goto(this, 'Fight', { boss, tier: this.simTier }, 400);
+  }
+
   private cycle(slot: Slot, dir: number): void {
     const opts = slotOptions(slot);
     const i = opts.indexOf(this.loadout.cyber[slot]);
@@ -191,6 +211,14 @@ export class HubScene extends Phaser.Scene {
         else if (k === 'ArrowLeft' || k === 'KeyA' || k === 'MouseRight') this.cycle(SLOTS[this.row], -1);
         else if (k === 'ArrowRight' || k === 'KeyD' || k === 'MouseLeft' || k === 'Enter' || k === 'Space') this.cycle(SLOTS[this.row], 1);
         else if (close) this.overlay = null;
+      } else if (this.overlay === 'sim') {
+        const n = availableBosses().length;
+        if (k === 'ArrowUp' || k === 'KeyW') { this.simBoss = (this.simBoss + n - 1) % n; audio.sfx('ui'); }
+        else if (k === 'ArrowDown' || k === 'KeyS') { this.simBoss = (this.simBoss + 1) % n; audio.sfx('ui'); }
+        else if (k === 'ArrowLeft' || k === 'KeyA' || k === 'MouseRight') { this.simTier = Math.max(1, this.simTier - 1); audio.sfx('ui'); }
+        else if (k === 'ArrowRight' || k === 'KeyD') { this.simTier = Math.min(4, this.simTier + 1); audio.sfx('ui'); }
+        else if (k === 'Enter' || k === 'Space' || k === 'MouseLeft') { audio.sfx('uiConfirm'); this.startSim(); }
+        else if (close) this.overlay = null;
       } else if (this.overlay === 'records') {
         if (close || k === 'Enter' || k === 'Space' || k === 'MouseLeft') this.overlay = null;
       }
@@ -214,6 +242,7 @@ export class HubScene extends Phaser.Scene {
     w.fx.drawFlash(g, W, H);
     if (this.overlay === 'bench') this.drawBench();
     if (this.overlay === 'records') this.drawRecords();
+    if (this.overlay === 'sim') this.drawSim();
     if (this.overlay === 'menu') this.pause.draw(g);
     g.end();
   }
@@ -248,6 +277,33 @@ export class HubScene extends Phaser.Scene {
     g.text('上下选部位 · 左右切换（鼠标左/右键） · E / Esc 关闭', W / 2, 314, { layer: 'ui', align: 'center', color: P.slate });
   }
 
+  private drawSim(): void {
+    const g = this.gfx;
+    const ids = availableBosses();
+    g.rect(0, 0, W, H, P.ink, 0.6, 'ui');
+    this.box(70, 40, 500, 296, P.acid);
+    g.text('头目模拟器', 86, 48, { layer: 'ui', color: P.white, scale: 2 });
+    g.text('用当前武器和义体台上的义体 · 不计战绩', 554, 54, { layer: 'ui', align: 'right', color: P.amber });
+    ids.forEach((id, i) => {
+      const y = 84 + i * 52;
+      const f = i === this.simBoss % ids.length;
+      g.rect(84, y, 300, 46, f ? P.navy : P.night, 1, 'ui');
+      if (f) g.strokeRect(84, y, 300, 46, 1, P.acid, 1, 'ui');
+      g.text(BOSS_TEXT[id].name, 96, y + 6, { layer: 'ui', color: f ? P.white : P.pale });
+      g.text(BOSS_TEXT[id].place, 96, y + 24, { layer: 'ui', color: P.slate });
+      const kills = session.meta.bossKills[id] ?? 0;
+      g.text(`击败 ${kills}`, 372, y + 6, { layer: 'ui', align: 'right', color: P.slate });
+    });
+    const sel = ids[this.simBoss % ids.length];
+    if (this.textures.exists('standee') && this.textures.get('standee').has(sel)) {
+      g.circle(476, 220, 62, P.acid, 0.08, 'ui');
+      g.img('standee', sel, 476, 296, { layer: 'ui', ox: 0.5, oy: 1 });
+    }
+    g.text(`难度  ◀ 第 ${this.simTier} 场 ▶`, 476, 92, { layer: 'ui', align: 'center', color: P.cyan });
+    g.text(['生命 ×1', '生命 ×1.35 · 更快', '生命 ×1.7 · 更快', '生命 ×2 · 最快'][this.simTier - 1], 476, 110, { layer: 'ui', align: 'center', color: P.slate });
+    g.text('上下选头目 · 左右选难度 · Enter 开打 · E / Esc 关闭', W / 2, 314, { layer: 'ui', align: 'center', color: P.slate });
+  }
+
   private drawRecords(): void {
     const g = this.gfx;
     const m = session.meta;
@@ -256,7 +312,7 @@ export class HubScene extends Phaser.Scene {
     g.text('战绩', 156, 68, { layer: 'ui', color: P.white, scale: 2 });
     g.text(`出击 ${m.runs} 次 · 通关 ${m.wins} 次`, 156, 102, { layer: 'ui', color: P.pale });
     g.text('击败头目', 156, 128, { layer: 'ui', color: P.slate });
-    (['gearjaw', 'lux', 'octohydra'] as const).forEach((b, i) => {
+    availableBosses().forEach((b, i) => {
       g.text(`${BOSS_TEXT[b].name}  ${m.bossKills[b] ?? 0}`, 172, 146 + i * 16, { layer: 'ui', color: P.pale });
     });
     g.text('最快通关', 340, 128, { layer: 'ui', color: P.slate });

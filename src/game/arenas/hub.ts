@@ -18,6 +18,7 @@ export interface HubHooks {
   swapWeapon(id: WeaponId): void;
   openBench(): void;
   openRecords(): void;
+  openSim(): void;
   depart(): void;
 }
 
@@ -201,6 +202,7 @@ export function makeHubArena(hooks: HubHooks): Arena {
       WEAPONS.forEach((id, i) => w.add(new WeaponRack(56 + i * 58, 80, id, hooks)));
       w.add(new Station(110, 296, 20, 'bench', '改装义体', () => hooks.openBench()));
       w.add(new Station(196, 300, 10, 'terminal', '查看战绩', () => hooks.openRecords()));
+      w.add(new Station(372, 310, 10, 'terminal', '头目模拟器', () => hooks.openSim()));
       w.add(new Station(320, 60, 18, 'elevator', '出发', () => hooks.depart(), false));
       w.add(new Dummy(510, 196));
       w.add(new Pillar(420, 140));
@@ -224,6 +226,7 @@ export function makeHubArena(hooks: HubHooks): Arena {
       const lab = (s: string, x: number, y: number, c: number = P.slate) => g.text(s, x, y, { color: c, align: 'center' });
       lab('义体台', 110, 304);
       lab('战绩', 196, 304);
+      lab('模拟器', 372, 314, P.acid);
       lab('出发', 320, 64, COL.interact);
       lab('训练场', 480, 52);
       // lamp glows

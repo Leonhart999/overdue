@@ -48,6 +48,8 @@ export interface RunState {
   /** Hearts restored by the last post-fight repair (the "no repair" loan takes them back). */
   lastRepair?: number;
   startedAt: number;
+  /** Hub simulator: one fight, no rewards, no records; back to the hub afterwards. */
+  practice?: boolean;
 }
 
 export function newRun(weapon: WeaponId, seed = (Math.random() * 2 ** 31) | 0): RunState {

@@ -240,6 +240,12 @@ export class FightScene extends Phaser.Scene {
       boss: w.boss!.id, tier: this.data0.tier, time: w.time, hitsTaken: w.stats.hitsTaken,
       perfectDodges: w.stats.perfectDodges, staggers: w.stats.staggers, envDamage: Math.round(w.stats.envDamage), won: w.state === 'won',
     });
+    if (run.practice && ((w.state === 'won' && w.stateT > 2.6) || (w.state === 'lost' && w.stateT > 2.2))) {
+      this.ended = true;
+      session.run = null;
+      goto(this, 'Hub', undefined, 600);
+      return;
+    }
     if (w.state === 'won' && w.stateT > 2.6) {
       this.ended = true;
       const last = isLastFight(run);
