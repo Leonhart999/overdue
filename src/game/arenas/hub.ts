@@ -199,6 +199,16 @@ export function makeHubArena(hooks: HubHooks): Arena {
     bounds: { x: 16, y: 48, w: 608, h: 288 },
     playerSpawn: { x: 200, y: 200 },
     setup(w: World) {
+      // furniture baked into the background is solid, so the player cannot stand inside it
+      // (elevator doors, vending machine, desks, crates, bed)
+      w.walls.push(
+        { x: 296, y: 40, w: 48, h: 22 },  // elevator doors
+        { x: 260, y: 40, w: 30, h: 24 },  // vending machine
+        { x: 16, y: 144, w: 32, h: 14 },  // desks
+        { x: 16, y: 176, w: 16, h: 14 },  // crate
+        { x: 16, y: 288, w: 16, h: 30 },  // bed
+        { x: 576, y: 288, w: 32, h: 30 }, // crate stack
+      );
       WEAPONS.forEach((id, i) => w.add(new WeaponRack(56 + i * 58, 80, id, hooks)));
       w.add(new Station(110, 296, 20, 'bench', '改装义体', () => hooks.openBench()));
       w.add(new Station(196, 300, 10, 'terminal', '查看战绩', () => hooks.openRecords()));
@@ -227,7 +237,6 @@ export function makeHubArena(hooks: HubHooks): Arena {
       lab('义体台', 110, 304);
       lab('战绩', 196, 304);
       lab('模拟器', 372, 314, P.acid);
-      lab('出发', 320, 64, COL.interact);
       lab('训练场', 480, 52);
       // lamp glows
       for (const [x, y, c] of [[110, 270, P.sodium], [196, 278, P.acid], [320, 40, P.red], [126, 60, P.sodium]] as [number, number, number][]) {
