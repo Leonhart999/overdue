@@ -1,29 +1,34 @@
 /**
- * OCTOHYDRA — an eight-headed data serpent in a flooded server room.
+ * OCTOHYDRA — an eight-headed data serpent in a flooded three-level server shaft (serverfarm.ts).
  *
- * The core monolith sits shielded at the top of the arena; heads rise out of 8 water spots.
- * A severed head leaves a sparking stump that regrows after 7 s unless it is cauterised:
- * electrified water, explosions / fire, an arc overload, the arc beam held on it ~1 s, or one of
- * the hydra's own beams crossing it. A head that already regrew once withers for good when cut again.
- * Every retired stump burns back into the core (5.5% of its HP).
+ * The core monolith sits shielded in an alcove at the top of the shaft (L3); heads rise out of
+ * 8 water spots: 3 on L1 (bottom), 3 on L2, 2 on L3. Heads only attack while the player is on
+ * their level. A severed head leaves a sparking stump that regrows after 7 s unless it is
+ * cauterised: its level's water electrified, explosions / fire, an arc overload, the arc beam held
+ * on it ~1 s, or one of the hydra's own beams crossing it. A head that already regrew once withers
+ * for good when cut again. Every retired stump burns back into the core (5.5% of its HP).
  *
- * P1 (0-3 burnt) : 3 heads — spitter (lobbed acid, puddles), beamer (1.2 s telegraph, hard beam,
- *                  blocked by racks), biter (telegraphed lunge, stuck 1 s afterwards).
- * P2 (4-7 burnt) : 4 heads, faster heads; the core electrifies the water itself (green
- *                  telegraph) and sweeps a slow low beam over the water.
- * P3 (8 burnt)   : the shield breaks, the core rises and roams: rings, a charge that wrecks
- *                  racks (and stuns the core), the sweep. Conduits deal big damage to it in water.
+ * P1 (0-2 burnt) : L1 only (the sluice gate is shut). 3 heads — spitter (lobbed acid, puddles),
+ *                  beamer (1.2 s telegraph, hard beam, blocked by racks), biter (telegraphed
+ *                  lunge, stuck 1 s afterwards). All 3 L1 spots retired -> P2.
+ * P2 (3-7 burnt) : the gate opens and L1 floods deep (arena). 4 heads at a time from the L2 and
+ *                  L3 spots, faster heads; the core electrifies the water of the player's level
+ *                  (green telegraph) and sweeps a slow low beam down the shaft over the bulkheads.
+ * P3 (8 burnt)   : the shield breaks, the core rises out of its alcove and chases the player down
+ *                  the shaft through the stair gaps: rings, a charge that wrecks racks (and stuns
+ *                  the core), the sweep. L3 drains, so lure it into L2 / L1 water and trip that
+ *                  level's conduit: big damage to the core while it is in that water.
  *
  * HP bar = core HP. Heads have their own HP (160, tier scaled) and share the core's poise bar.
  */
 import { P, type Gfx } from '../../engine/gfx';
-import { angleTo, clamp, dist, lerp, norm, sign } from '../../engine/math';
+import { angleTo, clamp, dist, lerp, norm, rayCircle, sign } from '../../engine/math';
 import type { Script } from '../../engine/script';
 import { Body } from '../body';
 import { Boss, BossPart, tierHp } from '../boss';
 import { Bullet } from '../bullet';
 import { FirePatch, Zone, type Hazard } from '../hazard';
-import { beamBlock, ConduitBox, FARM, farmOf, onSegment, ServerRack, serverfarm, type FarmGrid } from '../arenas/serverfarm';
+import { beamBlock, ConduitBox, FARM, farmOf, levelOf, onSegment, route, ServerRack, serverfarm, type FarmGrid, type Pool } from '../arenas/serverfarm';
 import type { Hit, Shape } from '../types';
 import type { World } from '../world';
 import type { BossDef } from './registry';
@@ -40,6 +45,8 @@ const MAX_REGROWS = 1;
 const BURN = 0.055;
 const LIFT = 36;
 const BITE_REACH = 150;
+/** Heads wake on these levels per phase. */
+const PHASE_LEVELS = [[0], [1, 2], []];
 /** Area attacks that may touch a head and its neck in the same step: count once per head. */
 const AREA_SRC = new Set(['blade', 'iaido', 'overload', 'land', 'shove', 'fist', 'slide', 'grapple', 'conduit', 'fire', 'barrel']);
 
@@ -47,6 +54,8 @@ interface Spot {
   i: number;
   x: number;
   y: number;
+  /** 0 = L1 (bottom), 1 = L2, 2 = L3. */
+  level: number;
   type: HeadType;
   state: 'dormant' | 'rising' | 'head' | 'stump' | 'burnt';
   t: number;
@@ -135,8 +144,7 @@ class Stump extends Body {
     if (this.shockT > 0 && this.sparkT <= 0) this.shockT = Math.max(0, this.shockT - dt * 0.6);
     if (this.sparkT > 0) this.sparkT -= dt;
     if (w.rng.chance(dt * 9)) w.fx.sparks(this.x + w.rng.range(-3, 3), this.y - 9, 2, w.rng.pick([P.acid, P.ice, P.amber]), 70);
-    const grid = farmOf(w);
-    if (grid?.live) { this.cauterise(w, 'water'); return; }
+    if (farmOf(w)?.pools[this.spot.level].live) { this.cauterise(w, 'water'); return; }
     for (const o of w.objects) {
       if (o instanceof FirePatch && !o.dead && dist(o.x, o.y, this.x, this.y) < o.r + 8) { this.cauterise(w, 'fire'); return; }
     }
@@ -248,16 +256,16 @@ export class Octohydra extends Boss {
 
   constructor(w: World, tier: number, x: number, y: number) {
     super(w, tier, x, y, CORE_HP);
-    this.thresholds = [1 - 4 * BURN, 1 - 8 * BURN];
+    this.thresholds = [1 - 3 * BURN, 1 - 8 * BURN];
     this.staggerDur = 2.6;
     this.headHp = Math.round(HEAD_HP * tierHp(tier) * w.hpMul);
     this.core = this.addPart(new CorePart(this, x, y)) as CorePart;
-    this.spots = FARM.spots.map(([sx, sy], i) => ({ i, x: sx, y: sy, type: SPOT_TYPES[i], state: 'dormant', t: 0, head: null, stump: null, regrows: 0, marked: false }));
+    this.spots = FARM.spots.map(([sx, sy], i) => ({ i, x: sx, y: sy, level: levelOf(sy), type: SPOT_TYPES[i], state: 'dormant', t: 0, head: null, stump: null, regrows: 0, marked: false }));
     for (let i = 0; i < 3; i++) this.wake(this.spots[i], 1.0 + i * 0.45);
     this.grid = farmOf(w);
     if (this.grid) {
-      this.grid.onLive = (ww, conduit) => this.onWaterLive(ww, conduit);
-      this.grid.onLiveTick = (ww, dt, conduit) => this.onWaterTick(ww, dt, conduit);
+      this.grid.onLive = (ww, pool, conduit) => this.onWaterLive(ww, pool, conduit);
+      this.grid.onLiveTick = (ww, pool, dt, conduit) => this.onWaterTick(ww, pool, dt, conduit);
     }
     this.updateStatus();
   }
@@ -304,7 +312,7 @@ export class Octohydra extends Boss {
     w.sfx('bossHit', 1, 0.7);
     this.updateStatus();
     if (this.burnt >= 8 && this.phase < 2) this.goPhase(w, 2);
-    else if (this.burnt >= 4 && this.phase < 1) this.goPhase(w, 1);
+    else if (this.burnt >= 3 && this.phase < 1) this.goPhase(w, 1);
   }
 
   private goPhase(w: World, phase: number): void {
@@ -372,34 +380,32 @@ export class Octohydra extends Boss {
       w.fx.label(h.x, h.y - h.hz - 14, '打断', P.amber, 0.7);
     }
     if (h.hp <= 0) {
-      const burn = !!hit.ignite || hit.kind === 'fire' || hit.kind === 'blast' || !!this.grid?.live;
+      const burn = !!hit.ignite || hit.kind === 'fire' || hit.kind === 'blast' || !!this.grid?.pools[h.spot.level].live;
       this.sever(w, h, burn);
     }
     return dmg;
   }
 
-  private onWaterLive(w: World, conduit: boolean): void {
+  private onWaterLive(w: World, pool: Pool, conduit: boolean): void {
     if (this.dying) return;
     if (conduit) {
       for (const h of this.heads) {
-        if (h.rise < 1) continue;
+        if (h.rise < 1 || h.spot.level !== pool.level) continue;
         w.damage(h, { dmg: 60, kind: 'shock', x: h.hx, y: h.hy, from: 'env', src: 'conduit', poise: 18 });
         if (!h.dead) { this.interrupt(h); h.stunT = Math.max(h.stunT, 1.3); }
       }
-      if (this.exposed && this.coreInWater(w)) {
+      if (this.exposed && pool.inWater(this.x, this.y)) {
         w.damage(this.core, { dmg: 200, kind: 'shock', x: this.core.hx, y: this.core.hy, from: 'env', src: 'conduit', poise: 70 });
         w.fx.label(this.x, this.y - 80, '核心触电', P.ice, 1.2);
       }
     }
-    for (const s of this.spots) if (s.stump && !s.stump.burnt) s.stump.cauterise(w, 'water');
+    for (const s of this.spots) if (s.level === pool.level && s.stump && !s.stump.burnt) s.stump.cauterise(w, 'water');
   }
 
-  private onWaterTick(w: World, dt: number, conduit: boolean): void {
-    if (!conduit || !this.exposed || this.dying || !this.coreInWater(w)) return;
+  private onWaterTick(w: World, pool: Pool, dt: number, conduit: boolean): void {
+    if (!conduit || !this.exposed || this.dying || !pool.inWater(this.x, this.y)) return;
     w.damage(this.core, { dmg: 70 * dt, kind: 'shock', x: this.core.hx, y: this.core.hy, from: 'env', src: 'conduit', poise: 20 * dt, quiet: true });
   }
-
-  private coreInWater(w: World): boolean { return !!farmOf(w)?.inWater(this.x, this.y); }
 
   onStagger(w: World): void {
     for (const h of this.heads) { this.interrupt(h); h.stunT = Math.max(h.stunT, this.staggerDur); }
@@ -448,7 +454,8 @@ export class Octohydra extends Boss {
     }
     if (this.wakeT > 0) this.wakeT -= dt;
     if (alive < target && this.wakeT <= 0 && !this.transitioning) {
-      const next = this.spots.find((s) => s.state === 'dormant');
+      const lv = PHASE_LEVELS[this.phase] ?? [];
+      const next = this.spots.find((s) => s.state === 'dormant' && lv.includes(s.level));
       if (next) { this.wake(next, this.tele(1.1)); this.wakeT = 1.0; }
     }
     // heads
@@ -458,6 +465,7 @@ export class Octohydra extends Boss {
     for (const h of this.heads) {
       this.updateHead(w, h, dt);
       if (h.script || h.stunT > 0 || h.rise < 1 || this.staggered || this.transitioning || this.dying) continue;
+      if (levelOf(w.target().y) !== h.spot.level) { h.cd = Math.max(h.cd, 0.8); continue; }
       h.cd -= dt;
       if (h.cd <= 0 && busy + started < maxBusy) {
         h.script = this.headAttack(w, h);
@@ -569,6 +577,9 @@ export class Octohydra extends Boss {
       let tx = t.x, ty = t.y;
       if (i > 0) { tx += w.rng.range(-40, 40); ty += w.rng.range(-28, 28); }
       [tx, ty] = w.clampToBounds(tx, ty, 10);
+      const L = FARM.levels[h.spot.level];
+      ty = clamp(ty, L.y0 + 10, L.y1 - 10);
+      if (w.pointInWall(tx, ty)) { tx = t.x; ty = t.y; }
       const T = (0.7 + dist(h.x, h.y, tx, ty) / 420) / this.bulletMul;
       w.addBullet(new AcidGlob(h.mouthX, h.y, h.hz, tx, ty, T));
       w.sfx('spray', 0.7, 0.7);
@@ -627,6 +638,12 @@ export class Octohydra extends Boss {
     yield* this.wait(this.tele(0.5));
   }
 
+  /** Lunge length toward the target: reach-limited and stopping short of walls (bulkheads). */
+  private biteLen(w: World, s: Spot, dx: number, dy: number): number {
+    const t = w.target();
+    return Math.max(20, Math.min(BITE_REACH, dist(s.x, s.y, t.x, t.y) + 26, w.rayWall(s.x, s.y, dx, dy, BITE_REACH) - 8));
+  }
+
   private *bite(w: World, h: Head, count: number): Script {
     for (let k = 0; k < count; k++) {
       // pull back to the spot first
@@ -638,14 +655,14 @@ export class Octohydra extends Boss {
       const warn = this.tele(k === 0 ? 0.75 : 0.5);
       const s = h.spot;
       let [dx, dy] = norm(w.target().x - s.x, w.target().y - s.y);
-      let L = Math.min(BITE_REACH, dist(s.x, s.y, w.target().x, w.target().y) + 26);
+      let L = this.biteLen(w, s, dx, dy);
       const z = this.headHazard(h, { k: 'line', x1: s.x, y1: s.y, x2: s.x + dx * L, y2: s.y + dy * L, w: 22 }, warn, 0, (hz) => {
         hz.hitsPlayer = false;
         hz.onTick = (ww, hh) => {
           if (hh.t < warn * 0.5) {
             const t = ww.target();
             [dx, dy] = norm(t.x - s.x, t.y - s.y);
-            L = Math.min(BITE_REACH, dist(s.x, s.y, t.x, t.y) + 26);
+            L = this.biteLen(ww, s, dx, dy);
             if (hh.shape.k === 'line') { hh.shape.x2 = s.x + dx * L; hh.shape.y2 = s.y + dy * L; }
           }
         };
@@ -705,11 +722,14 @@ export class Octohydra extends Boss {
       // P3: roam, then attack
       yield* this.roam(w, this.tele(1.1) + w.rng.range(0, 0.6));
       const d = this.distToTarget();
+      const tl = levelOf(w.target().y), same = tl === levelOf(this.y);
+      const wet = !!this.grid?.pools[tl].water.some((z) => !z.dead);
       const options: [string, number][] = [
-        ['ring', 3],
-        ['charge', d > 70 ? 3 : 1],
-        ['sweep', 2],
-        ['zap', this.clock - this.lastZap > this.tele(14) ? 2 : 0],
+        ['ring', same ? 3 : 0],
+        ['charge', same ? (d > 70 ? 3 : 1) : 0],
+        ['sweep', same ? 2 : 0.5],
+        ['zap', wet && this.clock - this.lastZap > this.tele(14) ? 2 : 0],
+        ['chase', same ? 0 : 3],
       ];
       for (const o of options) if (o[0] === this.lastPick) o[1] *= 0.3;
       const pick = w.rng.weighted(options);
@@ -717,6 +737,7 @@ export class Octohydra extends Boss {
       if (pick === 'ring') yield* this.rings(w);
       else if (pick === 'charge') yield* this.charge(w);
       else if (pick === 'sweep') yield* this.sweepBeam(w);
+      else if (pick === 'chase') yield* this.roam(w, 2.2);
       else yield* this.electrify(w);
     }
   }
@@ -760,7 +781,7 @@ export class Octohydra extends Boss {
     const g = this.grid;
     if (!g) return;
     const warn = this.tele(1.7);
-    if (!g.trigger(w, 'boss', warn)) { yield* this.wait(0.4); return; }
+    if (!g.trigger(w, levelOf(w.target().y), 'boss', warn)) { yield* this.wait(0.4); return; }
     this.lastZap = this.clock;
     const end = this.clock + warn;
     while (this.clock < end) {
@@ -771,15 +792,38 @@ export class Octohydra extends Boss {
     yield* this.wait(g.liveDur + this.tele(0.4));
   }
 
+  /**
+   * The core's sweep line: fired from its raised eye, so it passes over the bulkheads and reaches
+   * down the shaft; racks and conduit boxes still block it, the outer walls end it.
+   */
+  private sweepLine(w: World, a: number, R: number): { x1: number; y1: number; x2: number; y2: number; body: Body | null } {
+    const x = this.x, y = this.y + 2, dx = Math.cos(a), dy = Math.sin(a), b = w.bounds;
+    let t = R;
+    if (dx > 1e-6) t = Math.min(t, (b.x + b.w - x) / dx); else if (dx < -1e-6) t = Math.min(t, (b.x - x) / dx);
+    if (dy > 1e-6) t = Math.min(t, (b.y + b.h - y) / dy); else if (dy < -1e-6) t = Math.min(t, (b.y - y) / dy);
+    t = Math.max(0, t);
+    let body: Body | null = null;
+    for (const o of w.bodies) {
+      if (o.dead || !o.blocksShots || !(o instanceof ServerRack || o instanceof ConduitBox)) continue;
+      const d = rayCircle(x, y, dx, dy, o.x, o.y, o.r);
+      if (d < t) { t = d; body = o; }
+    }
+    return { x1: x, y1: y, x2: x + dx * t, y2: y + dy * t, body };
+  }
+
   private *sweepBeam(w: World): Script {
     const ox = this.x, oy = this.y + 2;
     const t = w.target();
     const a = angleTo(ox, oy, t.x, t.y);
     const dir = w.rng.chance(0.5) ? 1 : -1;
-    const span = 1.5, R = 420;
+    // reach the target wherever it is in the shaft; a narrower arc when far, so the beam crosses
+    // the player's ground at the same speed as at close range
+    const d = Math.max(1, dist(ox, oy, t.x, t.y));
+    const R = clamp(d + 140, 320, 760), span = clamp((1.5 * 240) / d, 0.45, 1.5);
     const warn = this.tele(1.0), dur = 2.3;
     this.hazard({ k: 'sector', x: ox, y: oy, r: R, a, span, inner: 20 }, warn, 0, (h) => { h.hitsPlayer = false; });
-    this.hazard({ k: 'line', x1: ox, y1: oy, x2: ox + Math.cos(a - dir * span / 2) * 160, y2: oy + Math.sin(a - dir * span / 2) * 160, w: 8 }, warn, 0, (h) => { h.hitsPlayer = false; });
+    const l0 = Math.min(R, d);
+    this.hazard({ k: 'line', x1: ox, y1: oy, x2: ox + Math.cos(a - dir * span / 2) * l0, y2: oy + Math.sin(a - dir * span / 2) * l0, w: 8 }, warn, 0, (h) => { h.hitsPlayer = false; });
     w.sfx('charge', 0.8, 0.8);
     const end = this.clock + warn;
     while (this.clock < end) { this.chargeGlow = 0.7; yield; }
@@ -792,7 +836,7 @@ export class Octohydra extends Boss {
       h.onTick = (ww, hh) => {
         if (this.staggered || this.dying) { hh.dead = true; this.sweep = null; return; }
         const ang = a - dir * span / 2 + dir * span * clamp(hh.t / dur, 0, 1);
-        const L = this.beamLine(ww, this.x, this.y + 2, ang, R);
+        const L = this.sweepLine(ww, ang, R);
         if (hh.shape.k === 'line') { hh.shape.x1 = L.x1; hh.shape.y1 = L.y1; hh.shape.x2 = L.x2; hh.shape.y2 = L.y2; }
         this.sweep = L;
         this.beamEffects(ww, L, L.body);
@@ -805,21 +849,48 @@ export class Octohydra extends Boss {
     yield* this.wait(this.tele(0.5));
   }
 
+  /** A point near the target on the target's level for the core to drift to. */
+  private roamGoal(w: World): { x: number; y: number; level: number } {
+    const b = w.bounds, t = w.target(), level = levelOf(t.y), L = FARM.levels[level];
+    let x = clamp(t.x + w.rng.range(-120, 120), b.x + 40, b.x + b.w - 40);
+    let y = clamp(t.y + w.rng.range(-90, 40), L.y0 + 30, L.y1 - 30);
+    if (dist(x, y, t.x, t.y) < 70) { x = clamp(320 + (320 - t.x) * 0.5, b.x + 40, b.x + b.w - 40); y = (L.y0 + L.y1) / 2; }
+    if (w.pointInWall(x, y)) { x = t.x; y = t.y; }
+    return { x, y, level };
+  }
+
+  /**
+   * P3 movement: drift near the target on its level; on another level, chase it through the stair
+   * gaps (faster). A side-step frees the core if it makes no progress (rack, wall corner).
+   */
   private *roam(w: World, dur: number): Script {
-    const b = w.bounds;
-    const t = w.target();
-    let tx = clamp(t.x + w.rng.range(-120, 120), b.x + 40, b.x + b.w - 40);
-    let ty = clamp(t.y + w.rng.range(-90, 40), b.y + 80, b.y + b.h - 30);
-    if (dist(tx, ty, t.x, t.y) < 70) { tx = clamp(320 + (320 - t.x) * 0.5, b.x + 40, b.x + b.w - 40); ty = clamp(170, b.y + 30, b.y + b.h - 30); }
+    let goal = this.roamGoal(w);
     const end = this.clock + dur;
-    while (this.clock < end) {
-      const d = dist(this.x, this.y, tx, ty);
-      const [nx, ny] = norm(tx - this.x, ty - this.y);
-      const sp = d > 6 ? 62 : 0;
-      this.moveX = nx * sp; this.moveY = ny * sp;
-      yield;
+    let last = this.clock, checkT = 0, sideT = 0, side = 1, px = this.x, py = this.y;
+    try {
+      while (this.clock < end) {
+        const dt = this.clock - last;
+        last = this.clock;
+        const t = w.target();
+        if (levelOf(t.y) !== goal.level) goal = this.roamGoal(w);
+        const apart = levelOf(this.y) !== levelOf(t.y);
+        const aim = apart ? { x: t.x, y: t.y } : goal;
+        const wp = route(w, this.x, this.y, aim.x, aim.y, this.core.r) ?? aim;
+        let [nx, ny] = norm(wp.x - this.x, wp.y - this.y);
+        if (sideT > 0) { sideT -= dt; [nx, ny] = [-ny * side, nx * side]; }
+        const d = dist(this.x, this.y, wp.x, wp.y);
+        const sp = d > 6 || apart ? (apart || dist(this.x, this.y, t.x, t.y) > 220 ? 92 : 62) : 0;
+        this.moveX = nx * sp; this.moveY = ny * sp;
+        checkT += dt;
+        if (checkT >= 0.7) {
+          if (sp > 0 && sideT <= 0 && dist(this.x, this.y, px, py) < 10) { sideT = 0.5; side = -side; }
+          px = this.x; py = this.y; checkT = 0;
+        }
+        yield;
+      }
+    } finally {
+      this.moveX = this.moveY = 0;
     }
-    this.moveX = this.moveY = 0;
   }
 
   private *rings(w: World): Script {
@@ -971,7 +1042,7 @@ export const octohydraDef: BossDef = {
   make: (w, tier) => new Octohydra(w, tier, FARM.core.x, FARM.core.y),
   drop: 'arm_jack',
   portrait: { key: 'octo_portrait', frame: 'portrait' },
-  hint: '打断头后用接线盒电水或电弧烧焦断颈 · 机柜挡光束 · 站上格栅或跳起躲电',
+  hint: '断颈用本层接线盒电水或电弧烧焦 · 水闸打开后上楼 · 核心进水时拉该层接线盒',
   music: {
     bpm: 110,
     kick: 'x.....x...x.....',

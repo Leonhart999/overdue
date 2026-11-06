@@ -110,11 +110,14 @@ export class Fx {
   label(x: number, y: number, text: string, c: number = P.amber, dur = 0.9): void {
     // stack labels that would overlap a fresh one at the same spot; keep them on screen, below the HUD
     const v = this.view;
-    let yy = Math.min(Math.max(y, v.y + 72), v.y + v.h - 8);
+    const top = v.y + 72;
+    let yy = Math.min(Math.max(y, top), v.y + v.h - 8);
     x = Math.max(v.x + 40, Math.min(v.x + v.w - 40, x));
+    // stack upward, or downward when that would run into the HUD
+    const dir = yy - 4 * 13 < top ? 1 : -1;
     for (let i = 0; i < 4; i++) {
       if (!this.labels.some((l) => l.t < 0.5 && Math.abs(l.x - x) < 40 && Math.abs(l.y - yy) < 12)) break;
-      yy -= 13;
+      yy += dir * 13;
     }
     this.labels.push({ x, y: yy, text, t: 0, dur, c });
   }

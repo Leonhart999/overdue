@@ -4,10 +4,12 @@
  *   octo_parts     24x24  neck, neck_glow, stump, stump_burnt           (origin bottom centre)
  *   octo_core      56x72  shielded, exposed, risen                      (origin bottom centre)
  *   farm_props     32x48  rack, rack_dented, rack_wrecked, conduit, conduit_off
+ *   farm_big       64x32  gate (sluice door), drain, drain_open
+ *   farm_drained   640x32 d0-d9: L3 floor strips with the water gone (shown as the drain empties L3)
  *   octo_portrait  64x64  portrait
- *   bg_serverfarm  640x360 floor + walls (water layout from FARM in arenas/serverfarm.ts)
+ *   bg_serverfarm  640x1072 the whole shaft: floor + walls (layout from FARM / farmMask in arenas/serverfarm.ts)
  */
-import { FARM } from '../game/arenas/serverfarm';
+import { DRAIN_STRIPS, FARM, farmMask, levelOf } from '../game/arenas/serverfarm';
 import { C, RAMP } from './palette';
 import { PixBuf, type Pt } from './core/pixbuf';
 import { bayer, hash2 } from './core/rng';
@@ -306,45 +308,150 @@ function portrait(): PixBuf {
   });
 }
 
-// ------------------------------------------------------------------ background (640x360)
-function serverfarm(): PixBuf {
-  const W = 640, H = 360;
-  const b = new PixBuf(W, H);
-  const B = FARM.bounds;
-  const inBounds = (x: number, y: number) => x >= B.x && x < B.x + B.w && y >= B.y && y < B.y + B.h;
-  const dryAt = (x: number, y: number) => FARM.dry.some((r) => x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h);
+// ------------------------------------------------------------------ shaft devices (64x32)
+/** Sluice gate door for the L1 -> L2 ramp (drawn at runtime, shrinks upward as it opens). */
+function gate(): PixBuf {
+  return frame(64, 32, (b) => {
+    part(b, mat(RAMP.cool, 3), (x) => x.rect(2, 2, 60, 28, 1), { rim: C.steel });
+    for (let x = 10; x < 60; x += 10) { b.vline(x, 4, 20, C.navy); b.vline(x + 1, 4, 20, C.slate); }
+    // hazard band
+    for (let y = 22; y < 28; y++) for (let x = 3; x < 61; x++) b.set(x, y, ((x + y) >> 2) % 2 ? C.amber : C.ink);
+    // hand wheel
+    b.ring(32, 12, 6, C.fog);
+    b.line(26, 12, 38, 12, C.steel); b.line(32, 6, 32, 18, C.steel);
+    b.circle(32, 12, 1.5, C.pale);
+    // seal lamps
+    b.set(6, 6, C.red); b.set(57, 6, C.red);
+    b.hline(2, 61, 30, C.ink);
+    b.outline(C.ink);
+  });
+}
 
-  // ---- water
-  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
-    if (!inBounds(x, y)) continue;
-    let c: number = C.abyss;
-    const deep = Math.min(x - B.x, B.x + B.w - x, y - B.y) < 10;
-    if (deep && bayer(x, y) < 8) c = C.night;
-    const h = hash2(x >> 2, y, 3);
-    if (h < 0.018 && (x & 3) !== 0) c = C.teal;
-    else if (h < 0.022) c = C.moss;
-    b.set(x, y, c);
-  }
-  // submerged cables: from the core to every spot and to the racks / conduits
+/** Drain grate in the middle of L3: closed (dry grating) or open (a pit). */
+function drain(open: boolean): PixBuf {
+  return frame(64, 32, (b) => {
+    b.rect(0, 0, 64, 32, C.steel);
+    b.strokeRect(0, 0, 64, 32, C.ink);
+    b.hline(1, 62, 1, C.fog);
+    if (!open) {
+      b.rect(3, 3, 58, 26, C.ink);
+      for (let x = 4; x < 60; x += 4) { b.vline(x, 4, 27, C.slate); b.vline(x + 1, 4, 27, C.steel); }
+      b.hline(3, 60, 15, C.slate); b.hline(3, 60, 16, C.steel);
+      b.rect(28, 12, 8, 8, C.slate); b.strokeRect(28, 12, 8, 8, C.fog);
+      for (const [x, y] of [[4, 4], [59, 4], [4, 27], [59, 27]]) b.set(x, y, C.pale);
+      return;
+    }
+    b.rect(3, 3, 58, 26, C.ink);
+    // swirl of draining water
+    for (let y = 4; y < 28; y++) for (let x = 4; x < 60; x++) {
+      const dx = (x - 32) / 28, dy = (y - 16) / 12, d = Math.hypot(dx, dy);
+      if (d > 1) continue;
+      const a = Math.atan2(dy, dx) + d * 5;
+      if (Math.sin(a * 2) > 0.4 && d > 0.25) b.set(x, y, d > 0.7 ? C.abyss : C.night);
+    }
+    // the grate swung up against the near edge
+    for (let x = 4; x < 60; x += 4) b.vline(x, 3, 5, C.slate);
+    b.hline(3, 60, 3, C.fog);
+    b.hline(3, 60, 28, C.teal);
+  });
+}
+
+// ------------------------------------------------------------------ background (640x1072)
+const B = FARM.bounds;
+const wallAt = (x: number, y: number) => farmMask(Math.floor(x / 16), Math.floor(y / 16));
+const floorAt = (x: number, y: number) => x >= B.x && x < B.x + B.w && y >= B.y && y < B.y + B.h && !wallAt(x, y);
+const dryAt = (x: number, y: number) => FARM.dry.some((r) => x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h);
+
+/** Submerged / exposed cables: core to the L3 spots, each level's conduit and ramp to its spots. */
+function cables(b: PixBuf, c: number, dot: number): void {
   const cable = (x0: number, y0: number, x1: number, y1: number, seed: number) => {
-    const n = 40;
+    const n = Math.max(20, Math.round(Math.hypot(x1 - x0, y1 - y0) / 8));
     let px = x0, py = y0;
     for (let i = 1; i <= n; i++) {
       const t = i / n;
       const x = x0 + (x1 - x0) * t + Math.sin(t * 6 + seed) * 6, y = y0 + (y1 - y0) * t + Math.cos(t * 5 + seed) * 4;
-      b.line(px, py, x, y, C.night);
-      b.line(px, py + 1, x, y + 1, C.night);
-      if (i % 6 === 0) b.set(Math.round(x), Math.round(y), C.moss);
+      b.line(px, py, x, y, c);
+      b.line(px, py + 1, x, y + 1, c);
+      if (i % 6 === 0) b.set(Math.round(x), Math.round(y), dot);
       px = x; py = y;
     }
   };
   const co = FARM.core;
-  FARM.spots.forEach(([x, y], i) => cable(co.x, co.y, x, y, i * 1.7));
-  FARM.conduits.forEach(([x, y], i) => cable(x, y, co.x + (i ? 20 : -20), co.y + 10, 5 + i));
+  FARM.spots.forEach(([x, y], i) => {
+    const lv = levelOf(y);
+    if (lv === 2) cable(co.x, co.y, x, y, i * 1.7);
+    else if (lv === 1) cable(96, 392, x, y, i * 1.7);
+    else cable(320, 728, x, y, i * 1.7);
+  });
+  cable(co.x - 20, co.y + 10, 96, 360, 3);
+  cable(co.x + 20, co.y + 10, 544, 360, 4);
+  for (const [x, y, , lv] of FARM.conduits) {
+    for (const [sx, sy] of FARM.spots) if (levelOf(sy) === lv) cable(x, y, sx, sy, x * 0.01 + sy * 0.03);
+  }
+}
+
+/** 3/4 back wall block with rows of servers, ending in a face and a shadow at `yb`. */
+function serverWall(b: PixBuf, x0: number, x1: number, yb: number): void {
+  for (let y = 0; y < yb; y++) for (let x = x0; x < x1; x++) {
+    let c: number = y < 4 ? C.ink : C.night;
+    if (y >= 6 && y < yb - 14) {
+      const col = Math.floor(x / 24), lx = x % 24;
+      if (lx === 0 || lx === 23) c = C.ink;
+      else if (lx === 1) c = C.slate;
+      else {
+        c = (y - 6) % 4 === 0 ? C.ink : C.navy;
+        if ((y - 6) % 4 === 2 && lx > 16 && lx < 21 && (lx & 1)) {
+          const h = hash2(col, y, 31);
+          c = h < 0.45 ? C.acid : h < 0.6 ? C.cyan : h < 0.66 ? C.red : C.moss;
+        }
+      }
+    }
+    const f = y - (yb - 14);
+    if (f >= 0 && f < 10) c = f === 0 ? C.steel : f < 4 ? C.slate : C.indigo; // wall face
+    if (f >= 10) c = f < 12 ? C.ink : C.night; // shadow line onto the floor
+    if (f >= 4 && f <= 6) c = f === 4 ? C.steel : f === 5 ? C.fog : C.slate; // pipe
+    if (f === 4 && x % 40 === 0) c = C.ink;
+    b.set(x, y, c);
+  }
+}
+
+/** Floor of the shaft (water, dry grating, stairs); `drained` = L3 floor with the water gone. */
+function floorLayer(b: PixBuf, drained: boolean, y0: number, y1: number): void {
+  const L3 = FARM.levels[2];
+  for (let y = y0; y < y1; y++) for (let x = 0; x < b.w; x++) {
+    if (!floorAt(x, y) || dryAt(x, y)) continue;
+    let c: number;
+    if (drained) {
+      // wet floor plates
+      c = C.navy;
+      if (x % 32 === 0 || y % 32 === 0) c = C.night;
+      else if (hash2(x >> 1, y >> 1, 12) < 0.05) c = C.indigo;
+      else if (hash2(x, y, 13) < 0.015) c = C.teal;
+    } else {
+      c = C.abyss;
+      const deep = !floorAt(x - 10, y) || !floorAt(x + 10, y) || !floorAt(x, y - 10);
+      if (deep && bayer(x, y) < 8) c = C.night;
+      // the deep pool around the core
+      const cd = Math.hypot((x - FARM.core.x) / 120, (y - FARM.core.y) / 70);
+      if (y < L3.y1 && cd < 1 && bayer(x, y) < 10 * (1 - cd) + 2) c = C.night;
+      const h = hash2(x >> 2, y, 3);
+      if (h < 0.018 && (x & 3) !== 0) c = C.teal;
+      else if (h < 0.022) c = C.moss;
+    }
+    b.set(x, y, c);
+  }
+}
+
+function serverfarm(): PixBuf {
+  const { w: W, h: H } = FARM.size;
+  const b = new PixBuf(W, H);
+  floorLayer(b, false, 0, H);
+  cables(b, C.night, C.moss);
   // core socket
+  const co = FARM.core;
   for (let y = co.y - 30; y < co.y + 30; y++) for (let x = co.x - 44; x < co.x + 44; x++) {
     const d = Math.hypot((x - co.x) / 40, (y - co.y) / 24);
-    if (d < 1 && inBounds(x, y)) b.set(x, y, d > 0.9 ? (bayer(x, y) < 6 ? C.moss : C.night) : d > 0.6 && bayer(x, y) < 8 ? C.night : C.ink);
+    if (d < 1 && floorAt(x, y)) b.set(x, y, d > 0.9 ? (bayer(x, y) < 6 ? C.moss : C.night) : d > 0.6 && bayer(x, y) < 8 ? C.night : C.ink);
   }
   // emergence spots: dark whirls with a green rim
   for (const [sx, sy] of FARM.spots) {
@@ -358,14 +465,19 @@ function serverfarm(): PixBuf {
     }
   }
   // ripple highlights
-  for (let i = 0; i < 260; i++) {
+  for (let i = 0; i < 800; i++) {
     const x = B.x + Math.floor(hash2(i, 1, 21) * B.w), y = B.y + Math.floor(hash2(i, 2, 21) * B.h);
-    if (dryAt(x, y)) continue;
+    if (dryAt(x, y) || !floorAt(x, y)) continue;
     const l = 2 + Math.floor(hash2(i, 3, 21) * 4);
-    for (let k = 0; k < l; k++) if (!dryAt(x + k, y)) b.set(x + k, y, hash2(i, 4, 21) < 0.2 ? C.cyan : C.teal);
+    for (let k = 0; k < l; k++) if (!dryAt(x + k, y) && floorAt(x + k, y)) b.set(x + k, y, hash2(i, 4, 21) < 0.2 ? C.cyan : C.teal);
   }
+  grating(b);
+  walls(b);
+  return b;
+}
 
-  // ---- dry grating
+/** Dry grating pads, the stairs through the bulkhead gaps, conduit stripes, walkway dashes. */
+function grating(b: PixBuf): void {
   for (const r of FARM.dry) {
     for (let y = r.y; y < r.y + r.h; y++) for (let x = r.x; x < r.x + r.w; x++) {
       let c: number = C.slate;
@@ -377,63 +489,118 @@ function serverfarm(): PixBuf {
       if (y >= r.y + r.h - 3) c = y === r.y + r.h - 1 ? C.ink : C.indigo;
       b.set(x, y, c);
     }
-    // shadow cast onto the water below the edge
+    // shadow cast onto the water below the edge, foam on the other edges
     for (let x = r.x; x < r.x + r.w; x++) for (let y = r.y + r.h; y < r.y + r.h + 3; y++) {
-      if (!dryAt(x, y) && inBounds(x, y) && (y === r.y + r.h || bayer(x, y) < 8)) b.set(x, y, C.ink);
+      if (!dryAt(x, y) && floorAt(x, y) && (y === r.y + r.h || bayer(x, y) < 8)) b.set(x, y, C.ink);
     }
-    // foam on the other edges
     for (let x = r.x - 1; x <= r.x + r.w; x++) {
-      for (const y of [r.y - 1]) if (!dryAt(x, y) && inBounds(x, y) && hash2(x, y, 8) < 0.5) b.set(x, y, C.teal);
+      const y = r.y - 1;
+      if (!dryAt(x, y) && floorAt(x, y) && hash2(x, y, 8) < 0.5) b.set(x, y, C.teal);
     }
     for (let y = r.y; y < r.y + r.h; y++) {
-      for (const x of [r.x - 1, r.x + r.w]) if (!dryAt(x, y) && inBounds(x, y) && hash2(x, y, 9) < 0.5) b.set(x, y, C.teal);
+      for (const x of [r.x - 1, r.x + r.w]) if (!dryAt(x, y) && floorAt(x, y) && hash2(x, y, 9) < 0.5) b.set(x, y, C.teal);
     }
   }
-  // hazard stripes on the conduit pads, amber edge dashes on the walkway
-  for (const r of FARM.dry.slice(2, 4)) {
+  // stairs: one tile above the gap, the gap, one tile below
+  for (const g of FARM.gaps) {
+    const ys = g.y - 16, ye = g.y + g.h + 16;
+    for (let y = ys; y < ye; y++) for (let x = g.x; x < g.x + g.w; x++) {
+      const k = (y - ys) % 6;
+      let c: number = k === 0 ? C.pale : k === 1 ? C.fog : k < 4 ? C.slate : k === 4 ? C.indigo : C.ink;
+      const lx = x - g.x;
+      if (lx < 3 || lx >= g.w - 3) c = lx === 0 || lx === g.w - 1 ? C.ink : lx === 1 || lx === g.w - 2 ? C.steel : C.slate;
+      b.set(x, y, c);
+    }
+  }
+  for (const i of FARM.conduitPads) {
+    const r = FARM.dry[i];
     for (let x = r.x; x < r.x + r.w; x++) for (let y = r.y + 2; y < r.y + 5; y++) b.set(x, y, ((x + y) >> 1) % 2 ? C.amber : C.ink);
   }
-  const walk = FARM.dry[FARM.dry.length - 1];
-  for (let x = walk.x + 4; x < walk.x + walk.w - 4; x++) if ((x >> 3) % 2 === 0) { b.set(x, walk.y + 3, C.amber); }
+  const walk = FARM.dry[FARM.walkway];
+  for (let x = walk.x + 4; x < walk.x + walk.w - 4; x++) if ((x >> 3) % 2 === 0) b.set(x, walk.y + 3, C.amber);
+}
 
-  // ---- walls
-  // back wall: rows of servers
-  for (let y = 0; y < B.y; y++) for (let x = 0; x < W; x++) {
-    let c: number = y < 4 ? C.ink : C.night;
-    if (y >= 6 && y < 34) {
-      const col = Math.floor(x / 24), lx = x % 24;
-      if (lx === 0 || lx === 23) c = C.ink;
-      else if (lx === 1) c = C.slate;
-      else {
-        c = (y - 6) % 4 === 0 ? C.ink : C.navy;
-        if ((y - 6) % 4 === 2 && lx > 16 && lx < 21 && (lx & 1)) {
-          const h = hash2(col, y, 31);
-          c = h < 0.45 ? C.acid : h < 0.6 ? C.cyan : h < 0.66 ? C.red : C.moss;
-        }
-      }
-    }
-    if (y >= 34 && y < 44) c = y === 34 ? C.steel : y < 38 ? C.slate : C.indigo; // wall face
-    if (y >= 44) c = y < 46 ? C.ink : C.night; // shadow line onto the water
-    b.set(x, y, c);
-  }
-  // pipes on the back wall
-  for (let x = 0; x < W; x++) {
-    b.set(x, 38, C.steel); b.set(x, 39, C.fog); b.set(x, 40, C.slate);
-    if (x % 40 === 0) { b.set(x, 37, C.ink); b.set(x, 41, C.ink); b.set(x, 38, C.ink); }
+function walls(b: PixBuf): void {
+  const { w: W, h: H } = FARM.size;
+  // back wall: the alcove keeps the low wall, the cheeks either side come down to y 96
+  serverWall(b, 0, W, B.y);
+  for (const r of FARM.alcove) serverWall(b, r.x, r.x + r.w, r.y + r.h);
+  for (const r of FARM.alcove) {
+    const ex = r.x === B.x ? r.x + r.w : r.x - 1; // inner edge toward the alcove
+    for (let y = B.y - 4; y < r.y + r.h; y++) { b.set(ex, y, C.ink); b.set(ex + (r.x === B.x ? -1 : 1), y, C.steel); }
   }
   // side walls
   for (let y = B.y - 4; y < H; y++) {
-    for (let x = 0; x < B.x; x++) { const lx = x; b.set(x, y, lx === B.x - 1 ? C.ink : lx === B.x - 2 ? C.steel : lx < 3 ? C.ink : (y >> 3) % 6 === 0 ? C.slate : C.navy); }
+    for (let x = 0; x < B.x; x++) b.set(x, y, x === B.x - 1 ? C.ink : x === B.x - 2 ? C.steel : x < 3 ? C.ink : (y >> 3) % 6 === 0 ? C.slate : C.navy);
     for (let x = B.x + B.w; x < W; x++) { const lx = x - B.x - B.w; b.set(x, y, lx === 0 ? C.ink : lx === 1 ? C.steel : lx > 12 ? C.ink : (y >> 3) % 6 === 0 ? C.slate : C.navy); }
   }
-  for (const y of [120, 260]) for (let x = 4; x < 12; x++) { b.set(x, y, C.fog); b.set(x + B.x + B.w, y, C.fog); }
+  for (let y = 120; y < H; y += 140) for (let x = 4; x < 12; x++) { b.set(x, y, C.fog); b.set(x + B.x + B.w, y, C.fog); }
+  // bulkheads between the levels: rim, top, face with lamps, shadow
+  for (const k of FARM.bulkheads) {
+    const y0 = k.y;
+    for (let x = B.x; x < B.x + B.w; x++) {
+      if (!wallAt(x, y0 + 8)) continue;
+      for (let dy = 0; dy < 16; dy++) {
+        let c: number;
+        if (dy === 0) c = C.pale;
+        else if (dy === 1) c = C.steel;
+        else if (dy < 5) c = (x % 16 === 8 && dy === 3) ? C.fog : C.slate;
+        else if (dy === 5) c = C.ink;
+        else if (dy < 13) {
+          c = C.navy;
+          if (dy === 8) c = C.steel;
+          else if (dy === 10 && x % 12 === 6) c = hash2(x, y0, 5) < 0.6 ? C.acid : C.cyan;
+          else if (dy === 11 && x % 48 < 2) c = C.ink;
+        } else c = dy === 13 ? C.indigo : C.ink;
+        b.set(x, y0 + dy, c);
+      }
+      for (let dy = 16; dy < 19; dy++) if (floorAt(x, y0 + dy) && (dy === 16 || bayer(x, y0 + dy) < 8)) b.set(x, y0 + dy, C.ink);
+    }
+    // posts at the gap edges
+    for (const g of FARM.gaps) {
+      if (g.y !== y0) continue;
+      for (const px of [g.x - 3, g.x + g.w]) for (let y = y0 - 6; y < y0 + 16; y++) for (let x = px; x < px + 3; x++) b.set(x, y, y === y0 - 6 ? C.pale : x === px + 1 ? C.fog : C.steel);
+    }
+  }
+  // the sluice gate housing above the L1 ramp
+  const gt = FARM.gaps[0];
+  b.rect(gt.x - 3, gt.y - 12, gt.w + 6, 4, C.slate);
+  b.hline(gt.x - 3, gt.x + gt.w + 2, gt.y - 12, C.fog);
+  b.hline(gt.x - 3, gt.x + gt.w + 2, gt.y - 9, C.ink);
   // bottom wall
   for (let y = B.y + B.h; y < H; y++) for (let x = 0; x < W; x++) {
     const ly = y - B.y - B.h;
     b.set(x, y, ly === 0 ? C.steel : ly === 1 ? C.slate : ly < 6 ? C.navy : C.ink);
     if (ly === 3 && x % 32 < 2) b.set(x, y, C.fog);
   }
-  return b;
+}
+
+/** L3 with the water gone, cut into the strips the drain empties one by one (transparent elsewhere). */
+function drainedStrips(): PixBuf[] {
+  const L3 = FARM.levels[2];
+  const full = new PixBuf(FARM.size.w, FARM.size.h);
+  floorLayer(full, true, L3.y0, L3.y1);
+  // cables and spot holes lying on the bare floor
+  const cab = new PixBuf(FARM.size.w, FARM.size.h);
+  cables(cab, C.ink, C.slate);
+  for (let y = L3.y0; y < L3.y1; y++) for (let x = 0; x < full.w; x++) if (full.get(x, y) && cab.get(x, y)) full.set(x, y, cab.get(x, y));
+  for (const [sx, sy] of FARM.spots) if (levelOf(sy) === 2) { full.ellipse(sx, sy, 11, 6, C.ink); full.ring(sx, sy, 11, C.moss); }
+  const co = FARM.core;
+  for (let y = co.y - 24; y < co.y + 24; y++) for (let x = co.x - 40; x < co.x + 40; x++) {
+    if (full.get(x, y) && Math.hypot((x - co.x) / 40, (y - co.y) / 24) < 1) full.set(x, y, C.ink);
+  }
+  // leftover puddles
+  for (let i = 0; i < 40; i++) {
+    const x = B.x + 20 + Math.floor(hash2(i, 1, 44) * (B.w - 40)), y = L3.y0 + 60 + Math.floor(hash2(i, 2, 44) * 250);
+    if (!full.get(x, y)) continue;
+    const rx = 4 + hash2(i, 3, 44) * 8;
+    for (let yy = -3; yy <= 3; yy++) for (let xx = -Math.ceil(rx); xx <= Math.ceil(rx); xx++) {
+      if ((xx / rx) ** 2 + (yy / 3) ** 2 <= 1 && full.get(x + xx, y + yy)) full.set(x + xx, y + yy, yy === -3 ? C.teal : C.abyss);
+    }
+  }
+  const out: PixBuf[] = [];
+  for (let k = 0; k < DRAIN_STRIPS; k++) out.push(full.crop(0, L3.y0 + k * 32, FARM.size.w, 32));
+  return out;
 }
 
 export function buildOctohydraArt(): SheetSpec[] {
@@ -456,7 +623,13 @@ export function buildOctohydraArt(): SheetSpec[] {
         { name: 'conduit', buf: conduit(true) }, { name: 'conduit_off', buf: conduit(false) },
       ],
     },
+    {
+      key: 'farm_big', group: 'Octohydra', frameW: 64, frameH: 32, columns: 3, frames: [
+        { name: 'gate', buf: gate() }, { name: 'drain', buf: drain(false) }, { name: 'drain_open', buf: drain(true) },
+      ],
+    },
+    { key: 'farm_drained', group: 'Octohydra', frameW: FARM.size.w, frameH: 32, columns: 1, frames: drainedStrips().map((buf, k) => ({ name: `d${k}`, buf })) },
     { key: 'octo_portrait', group: 'Octohydra', frameW: 64, frameH: 64, frames: [{ name: 'portrait', buf: portrait() }] },
-    { key: 'bg_serverfarm', group: 'Arenas', frameW: 640, frameH: 360, frames: [{ name: 'bg', buf: serverfarm() }] },
+    { key: 'bg_serverfarm', group: 'Arenas', frameW: FARM.size.w, frameH: FARM.size.h, frames: [{ name: 'bg', buf: serverfarm() }] },
   ];
 }
