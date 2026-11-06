@@ -38,6 +38,8 @@ export interface ImgOpts {
   /** Fill the sprite with a flat colour (hit flash). */
   fill?: number;
   add?: boolean;
+  /** Draw above every layer, overlays included (mouse cursor). Screen-space layers only. */
+  topmost?: boolean;
 }
 
 export interface TextOpts {

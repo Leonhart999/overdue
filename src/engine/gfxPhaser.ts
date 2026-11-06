@@ -20,6 +20,7 @@ const DEPTH = {
   overG: 9600,
   overImg: 9700,
   overText: 9900,
+  cursor: 9990,
 };
 
 const hex = (c: number) => '#' + c.toString(16).padStart(6, '0');
@@ -119,6 +120,7 @@ export class PhaserGfx implements Gfx {
       case 'over': depth = DEPTH.overImg + this.order.over++ * 0.01; break;
       default: depth = DEPTH.uiImg + this.order.ui++ * 0.01;
     }
+    if (o.topmost) depth = DEPTH.cursor;
     im.setDepth(depth);
     this.filter(im, layer === 'ui' || layer === 'over');
   }

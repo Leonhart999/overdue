@@ -21,7 +21,7 @@ import { session } from './session';
 import { fmt, goto, H, W } from '../ui/ui';
 import { textWidth } from '../ui/crispText';
 import {
-  cells, cellsWidth, chip, dim, dots, focusRow, header, heading, hints, hintStrip, keycap, mouseIcon, panel, para, SLOT_COL, socket, tagText, txt, WEAPON_COL, type Hint,
+  cells, cellsWidth, chip, dim, dots, focusRow, header, heading, hints, keycap, mouseIcon, panel, para, SLOT_COL, socket, tagText, txt, WEAPON_COL, type Hint,
 } from '../ui/kit';
 
 const DT = 1 / 60;
@@ -45,13 +45,6 @@ const ARMORY = { x: 40, y: 40, w: 560, h: 292, rowY: 80, rowH: 46, listW: 212 };
 const BENCH = { x: 72, y: 40, w: 496, h: 292, rowY: 80, rowH: 52 };
 const SIM = { x: 64, y: 40, w: 512, h: 292, rowY: 80, rowH: 42, listW: 268 };
 const RECORDS = { x: 120, y: 68, w: 400, h: 224 };
-const HUB_HINTS: Hint[] = [
-  { keys: ['E'], label: '互动' },
-  { keys: [], label: '武器库换武器' },
-  { keys: [], label: '义体台试义体' },
-  { keys: [], label: '右边是训练场' },
-  { keys: [], label: '电梯出发' },
-];
 const ARMORY_HINTS: Hint[] = [
   { keys: ['↑↓'], label: '选武器' },
   { keys: ['Enter', 'mouseL'], label: '拿上' },
@@ -287,7 +280,6 @@ export class HubScene extends Phaser.Scene {
     if (this.overlay) w.prompt = null;
     w.draw(g);
     drawHud(g, w, sx, sy, (f) => this.textures.exists('ico') && this.textures.get('ico').has(f));
-    if (!this.overlay) hintStrip(g, HUB_HINTS, H - 21, { alpha: 0.9 });
     w.fx.drawFlash(g, W, H);
     if (this.overlay === 'armory') this.drawArmory();
     if (this.overlay === 'bench') this.drawBench();

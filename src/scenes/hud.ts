@@ -64,7 +64,7 @@ export function drawHud(g: Gfx, w: World, camX: number, camY: number, hasIcon: (
 
   // ---- crosshair
   const inp = w.input;
-  if (inp) g.img('cursor', 'cursor', inp.ax - camX, inp.ay - camY, { layer: 'ui', ox: 0.5, oy: 0.5 });
+  if (inp) g.img('cursor', 'cursor', inp.ax - camX, inp.ay - camY, { layer: 'ui', ox: 0.5, oy: 0.5, topmost: true });
 }
 
 // ------------------------------------------------------------------ player plate
