@@ -10,7 +10,7 @@
  *   ?icons=1           the `ico` sheet (cyberware / mod / reward icons) at x1 and x3 with names
  *                      (used for docs/icons.png)
  *   ?sprite=1          Echo's in-fight sprite (pc_echo) vs the old ow_echo on the four arena floors,
- *                      plus the Echo standees (used for docs/echo_sprite.png)
+ *                      plus the Echo standees (used for docs/echo_sprite.png); &big=1 adds x8 frames
  * Sets `window.__standeeReady = true` when drawn (for headless screenshots).
  */
 import { C, PALETTE_RGB } from './palette';
@@ -163,6 +163,11 @@ if (q.get('gearjaw')) {
   const pc = sheet('pc_echo'), ow = sheet('ow_echo');
   const floor = (key: string) => all.find((p) => p.key === key)!.frames[0].buf;
   const helipad = floor('bg_helipad');
+  if (q.get('big')) {
+    // x8 detail of every frame on ink (two rows of six)
+    row('pc_echo x8', pc.slice(0, 6), 8, C.ink);
+    row('', pc.slice(6), 8, C.ink);
+  }
   rowOn('pc_echo 20x30 (new), x4', pc, 4, helipad, 230, 150);
   rowOn('ow_echo 16x24 (old), x4', ow, 4, helipad, 230, 150);
   const idle = (fs: Frame[]) => fs.filter((f) => f.name.endsWith('_idle') || f.name.endsWith('_walkA'));

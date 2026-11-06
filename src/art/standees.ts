@@ -31,7 +31,7 @@ export const STANDEE_H = 144;
  * The bottom rows are cropped by the frame on purpose; anchor cards at the bottom edge.
  */
 export const STANDEE_FOCUS: Record<string, { face: Pt; glow: Pt[] }> = {
-  echo: { face: [59, 40], glow: [[64, 40], [78, 90]] },
+  echo: { face: [57, 46], glow: [[62, 47], [87, 88]] }, // glows: cyber eye, shoulder joint seam
   gearjaw: { face: [47, 37], glow: [[41, 37], [53, 37], [56, 136]] }, // last glow: P2 engine
   lux: { face: [55, 48], glow: [[26, 51], [58, 48]] },
   octohydra: { face: [37, 55], glow: [[75, 80], [77, 19]] },
@@ -336,282 +336,356 @@ const M = {
 
 type EchoMood = 'normal' | 'hurt' | 'win';
 
+/**
+ * Echo's value plan (brightest -> darkest): chrome arm (pale/white), skin, jacket (steel with fog
+ * light, slate shadow), hair (night/navy/indigo with a steel sheen band), backdrop (ink/night).
+ * Cyan only on the hair streak, the cyber eye, the collar trim / zip, the arm joint seams and the
+ * rim light. One small warm accent: the debt tag on the loaned arm.
+ */
+const JACKET_E: Mat = { ramp: [C.navy, C.indigo, C.slate, C.steel, C.fog], bias: -0.04 };
+const HEM_E: Mat = { ramp: [C.night, C.navy, C.indigo, C.slate], bias: 0 };
+const TROUSER_E: Mat = { ramp: [C.ink, C.night, C.navy, C.indigo], bias: -0.04 };
+const SLEEVE_E: Mat = { ...JACKET_E };
+const FORESLEEVE_E: Mat = { ...JACKET_E };
+const COLLAR_E: Mat = { ...JACKET_E, bias: 0.04 };
+const LINING_E: Mat = { ramp: [C.ink, C.night, C.navy], bias: -0.05 };
+const STRAP_E: Mat = { ramp: [C.ink, C.night, C.navy, C.indigo], bias: -0.02 };
+const HAIR_E: Mat = { ramp: [C.night, C.navy, C.indigo], bias: 0.02 };
+const BUZZ_E: Mat = { ramp: [C.navy, C.indigo, C.slate], bias: 0 };
+const STREAK_E: Mat = { ramp: [C.teal, C.cyan, C.ice], bias: 0.02, rim: [C.ice, C.cyan] };
+const SKIN_E: Mat = { ramp: [C.skinX, C.skinD, C.skinM, C.skinL], bias: 0.4 };
+const CHROME_E: Mat = { ramp: [C.night, C.slate, C.steel, C.fog, C.pale, C.white], bias: 0.12, rim: [C.ice, C.cyan] };
+// same chrome under different names, so the engine draws a dark seam where the plates meet
+const FORE_E: Mat = { ...CHROME_E };
+const CAP_E: Mat = { ...CHROME_E, bias: 0.04 };
+const HAND_E: Mat = { ...CHROME_E, bias: -0.02 };
+const FING_A: Mat = { ...CHROME_E, bias: 0.02 };
+const FING_B: Mat = { ...CHROME_E, bias: 0.02 };
+const JOINT_E: Mat = { ramp: [C.ink, C.night, C.navy, C.slate], bias: 0 };
+const BLD_E: Mat = { ramp: [C.ink, C.night, C.navy], bias: -0.3, rim: [C.navy], back: true };
+const BLD_FAR_E: Mat = { ramp: [C.ink, C.night], bias: -0.25, rim: null, back: true };
+
+/** Head placement: skull centre. hurt drops the head and turns it down. */
+const echoHead = (mood: EchoMood): Pt => (mood === 'hurt' ? [50, 49] : mood === 'win' ? [53, 43] : [52, 44]);
+
 function echo(mood: EchoMood): PixBuf {
   const s = new Stage([C.cyan, C.teal]);
-  const win = mood === 'win';
+  const win = mood === 'win', hurt = mood === 'hurt';
   echoBackdrop(s);
-  // --- torso / jacket (3/4 turned right: centre line right of the frame centre)
-  const torso = s.part(M.jacket, (b) => b.poly([[30, 88], [35, 78], [45, 68], [70, 68], [84, 76], [91, 92], [89, 144], [38, 144], [36, 116]], 1), { r: 8, bias: 0.04 });
-  // far half turns away from the light
-  s.light(-0.16, (b) => b.poly([[64, 66], [100, 66], [100, 144], [62, 144], [63, 100]], 1), torso);
-  // inner shirt visible at the open collar
-  s.part({ ramp: [C.ink, C.night, C.navy, C.indigo] }, (b) => b.poly([[54, 70], [68, 70], [65, 96], [61, 98]], 1), { r: 3, cast: 0 });
-  // jacket front panels with cyan trim along the edges
-  s.part(M.jacket, (b) => b.poly([[46, 70], [55, 70], [61, 100], [59, 144], [44, 144], [46, 112], [40, 88]], 1), { r: 3, bias: 0.06 });
-  s.part(M.jacket, (b) => b.poly([[68, 70], [76, 70], [84, 86], [78, 110], [80, 144], [66, 144], [64, 100]], 1), { r: 3, bias: -0.14 });
-  s.paint((b) => {
-    b.line(55, 71, 61, 100, C.cyan); b.line(61, 100, 59, 143, C.cyan);
-    b.line(68, 71, 64, 100, C.teal); b.line(64, 100, 65, 143, C.teal);
-  });
-  // bag strap across the chest (near shoulder -> far hip) with a buckle
-  s.part({ ramp: [C.ink, C.night, C.navy, C.slate] }, (b) => b.poly([[33, 80], [40, 76], [86, 136], [80, 142]], 1), { r: 2, cast: 0.25 });
-  s.part(M.chrome, (b) => b.rect(66, 116, 6, 7, 1), { r: 2, cast: 0.2 });
-  s.paint((b) => { b.rect(68, 118, 2, 3, C.ink); b.set(67, 117, C.white); });
-  // near arm (flesh right arm in a sleeve) hangs in front of the torso side
-  s.part(M.jacket, (b) => { b.capsule(34, 88, 27, 116, 8, 1); b.capsule(27, 116, 24, 150, 7.5, 1); }, { r: 7, bias: 0.06, cast: 0.25 });
-  s.paint((b) => { b.line(21, 112, 26, 118, C.navy); b.line(20, 116, 24, 120, C.navy); });
-  s.paint((b) => { b.line(39, 82, 33, 92, C.navy); });
-  // debtor barcode patch on the sleeve
-  s.part({ ramp: [C.ink, C.night, C.navy] }, (b) => b.poly([[23, 96], [33, 97], [32, 105], [22, 104]], 1), { r: 1, cast: 0.15 });
-  s.paint((b) => { [1, 0, 1, 1, 0, 1, 0, 1].forEach((on, i) => { if (on) b.line(24 + i, 98, 24 + i, 103, i % 3 === 0 ? C.cyan : C.teal); }); });
+  const [hx, hy] = echoHead(mood);
+  // --- hair, back mass (behind the head and the collar): spikes towards the back (viewer-left)
+  echoHairBack(s, hx, hy);
+  // --- torso: 3/4 turned right, the centre line (zip) right of the frame centre
+  // trousers + belt below the short jacket
+  s.part(TROUSER_E, (b) => b.poly([[28, 128], [92, 128], [92, 144], [28, 144]], 1), { r: 6 });
+  s.paint((b) => { b.hline(30, 90, 136, C.night); b.hline(30, 90, 137, C.night); b.rect(60, 135, 5, 4, C.steel); b.set(60, 135, C.pale); });
+  const torso = s.part(JACKET_E, (b) => b.poly([[22, 100], [26, 86], [36, 78], [48, 73], [68, 73], [82, 77], [90, 86], [93, 102], [94, 128], [80, 131], [60, 133], [40, 133], [24, 131]], 1), { r: 9 });
+  // ribbed hem band
+  s.part(HEM_E, (b) => b.poly([[23, 126], [40, 128], [60, 128], [80, 126], [94, 123], [94, 128], [80, 131], [60, 133], [40, 133], [23, 131]], 1), { r: 2, clip: torso, cast: 0.1 });
+  s.paint((b) => { for (let x = 26; x < 94; x += 3) b.set(x, 130 - Math.round(Math.max(0, x - 60) / 10), C.night); }, torso);
+  // far half turns away from the key light
+  s.light(-0.32, (b) => b.poly([[66, 70], [104, 70], [104, 144], [68, 144], [67, 104]], 1), torso);
+  // the near chest plane faces the key light; the side under the near arm turns away
+  s.light(0.08, (b) => b.poly([[40, 78], [64, 76], [66, 128], [42, 130]], 1), torso);
   echoJacketDetail(s, torso);
+  // --- near arm (flesh right arm in its sleeve): hooked on the bag strap, or hanging when hurt
+  if (hurt) {
+    s.part(SLEEVE_E, (b) => { b.capsule(31, 90, 26, 120, 8.5, 1); b.capsule(26, 120, 25, 150, 8, 1); }, { r: 7, bias: 0.06, cast: 0.28 });
+  } else {
+    s.part(SLEEVE_E, (b) => b.capsule(31, 88, 27, 120, 8.5, 1), { r: 7, bias: 0.06, cast: 0.28 });
+    s.part(FORESLEEVE_E, (b) => { b.capsule(27, 121, 40, 104, 7, 1); b.capsule(40, 104, 43, 100, 6, 1); }, { r: 6, bias: 0.08, cast: 0.3 });
+    // cuff, then the hand gripping the strap: knuckles over the top, thumb under
+    s.part(HEM_E, (b) => b.capsule(39, 106, 46, 99, 3.2, 1), { r: 2, cast: 0.2 });
+    s.part(SKIN_E, (b) => { b.ellipse(48.5, 95.5, 4.6, 4.2, 1); b.capsule(46, 99, 51, 100, 1.8, 1); }, { r: 3, cast: 0.3, bias: -0.04 });
+    s.paint((b) => {
+      for (const [x, y] of [[47, 94], [49, 93], [51, 94]] as Pt[]) { b.set(x, y + 1, C.skinD); b.set(x, y + 2, C.skinD); }
+      b.set(46, 93, C.skinL); b.set(48, 92, C.skinL);
+    });
+  }
+  s.light(0.12, (b) => b.ellipse(28, 88, 7, 7, 1));
   // --- neck + high collar
-  s.part(M.skin, (b) => b.poly([[48, 50], [62, 50], [63, 68], [49, 68]], 1), { r: 5, bias: -0.3 });
-  s.part(M.jacket, (b) => b.poly([[43, 59], [50, 63], [64, 63], [71, 57], [73, 70], [64, 76], [50, 76], [41, 70]], 1), { r: 4, bias: 0.06 });
-  s.paint((b) => { b.line(43, 59, 50, 63, C.teal); b.hline(50, 64, 63, C.cyan); b.line(64, 63, 71, 57, C.cyan); });
-  // neural jack at the side of the neck
-  s.paint((b) => { b.rect(50, 56, 3, 3, C.slate); b.set(51, 57, C.cyan); });
-
-  // --- chrome left arm (viewer-right), guard pose: fist raised in front of the shoulder
-  chromeArm(s, [85, 80], win ? [101, 84] : [97, 114], win ? [92, 52] : [78, 90]);
+  s.part(SKIN_E, (b) => b.poly([[hx - 7, hy + 12], [hx + 9, hy + 12], [hx + 10, hy + 30], [hx - 6, hy + 30]], 1), { r: 5, bias: -0.32 });
+  echoCollar(s, hx, hy);
+  // --- chrome left arm (viewer-right)
+  if (win) chromeArm(s, mood, [86, 84], [101, 88], [93, 50]);
+  else if (hurt) chromeArm(s, mood, [87, 88], [96, 116], [86, 138]);
+  else chromeArm(s, mood, [88, 83], [99, 110], [93, 133]);
   // --- head
-  const HX = 55, HY = 36;
-  echoHairBack(s, HX, HY);
-  s.part(M.skin, (b) => {
-    b.ellipse(HX, HY, 14.5, 15, 1);
-    b.poly([[HX - 13, HY + 2], [HX - 10, HY + 12], [HX - 3, HY + 19], [HX + 5, HY + 22], [HX + 11, HY + 18], [HX + 14.5, HY + 9], [HX + 15, HY]], 1);
-  }, { r: 14, cast: 0.3, bias: 0.12 });
-  // far side of the face turns away from the key light: cel shadow from the cheekbone to the jaw
-  s.light(-0.3, (b) => b.poly([[HX + 10, HY + 6], [HX + 12, HY + 4], [HX + 16, HY + 4], [HX + 16, HY + 22], [HX + 6, HY + 23], [HX + 9, HY + 16]], 1));
-  s.light(-0.25, (b) => b.poly([[HX - 10, HY + 14], [HX - 3, HY + 20], [HX + 5, HY + 23], [HX - 6, HY + 23]], 1));
-  // ear (near side, left)
-  s.part(M.skin, (b) => b.ellipse(HX - 12, HY + 6, 3, 4.5, 1), { r: 2, bias: -0.08, cast: 0 });
-  s.paint((b) => { b.vline(HX - 12, HY + 4, HY + 8, C.skinD); b.set(HX - 13, HY + 3, C.skinL); });
-  echoFace(s, HX, HY, mood);
-  echoHairFront(s, HX, HY);
+  echoFaceBase(s, hx, hy);
+  echoFace(s, hx, hy, mood);
+  echoHairFront(s, hx, hy);
   return s.resolve((b) => {
-    if (mood === 'hurt') {
-      // the chrome arm shorts out at the elbow; scuffs on the sleeve
-      const [ex, ey] = [97, 114];
-      b.hline(ex - 3, ex + 3, ey, C.ice); b.vline(ex, ey - 3, ey + 3, C.ice); b.set(ex, ey, C.white);
-      b.set(ex - 2, ey - 2, C.cyan); b.set(ex + 2, ey + 2, C.cyan); b.set(ex + 2, ey - 2, C.cyan);
-      for (const [x, y] of [[30, 120], [36, 104]] as Pt[]) { b.set(x, y, C.ink); b.set(x + 1, y, C.ink); b.set(x, y + 1, C.night); }
+    if (hurt) {
+      // sparks off the shoulder joint seam and the elbow
+      for (const [x, y, c] of [[98, 90, C.white], [102, 84, C.ice], [94, 84, C.cyan], [104, 114, C.white], [107, 109, C.ice], [105, 122, C.cyan]] as const) {
+        b.set(x, y, c); b.set(x - 1, y, C.cyan); b.set(x + 1, y, C.cyan); b.set(x, y - 1, C.cyan); b.set(x, y + 1, C.cyan);
+      }
+      b.line(100, 88, 104, 82, C.ice); b.line(106, 112, 110, 106, C.ice);
     }
   });
 }
 
-/** Night skyline sliver behind Echo's shoulders: two dark blocks with lit windows, a neon sign, rain. */
+/** Night skyline: a far silhouette band and two near blocks at the frame edges, all dark and dim. */
 function echoBackdrop(s: Stage): void {
-  const BLD: Mat = { ramp: [C.ink, C.night, C.navy, C.indigo], bias: -0.24, rim: [C.indigo], back: true };
-  const left = s.part(BLD, (b) => { b.rect(0, 66, 15, 80, 1); b.rect(9, 94, 13, 52, 1); b.rect(5, 56, 2, 10, 1); }, { r: 2, cast: 0 });
-  const right = s.part(BLD, (b) => { b.rect(90, 50, 22, 96, 1); b.rect(96, 42, 8, 8, 1); }, { r: 2, cast: 0 });
+  // far skyline: flat dark silhouette low behind the shoulders
+  s.part(BLD_FAR_E, (b) => {
+    for (const [x, w, top] of [[0, 10, 92], [10, 8, 100], [18, 12, 86], [30, 10, 104], [76, 12, 96], [88, 8, 82], [96, 16, 90]] as const) b.rect(x, top, w, H - top, 1);
+  }, { r: 1, cast: 0 });
+  // near blocks at the edges; nothing above y 70 near the head
+  const near = s.mask((b) => { b.rect(0, 74, 13, 70, 1); b.rect(97, 54, 15, 90, 1); b.rect(101, 46, 6, 8, 1); });
+  s.part(BLD_E, (b) => { b.rect(0, 74, 13, 70, 1); b.rect(97, 54, 15, 90, 1); b.rect(101, 46, 6, 8, 1); }, { r: 2, cast: 0 });
   s.paint((b) => {
-    // windows: 2x1 lights on a 4x5 grid, mostly sodium, some cyan, a rare magenta
-    for (let y = 46; y < H; y += 5) for (let x = 1; x < W - 1; x += 4) {
-      const h = hash2(x, y, 23);
-      if (h > 0.34) continue;
-      const c = h < 0.04 ? C.magenta : h < 0.12 ? C.teal : h < 0.2 ? C.orange : C.sodium;
+    // windows: sparse dim lights, mostly cool, a few warm
+    for (let y = 58; y < H; y += 6) for (let x = 1; x < W - 1; x += 4) {
+      const h = hash2(x, y, 41);
+      if (h > 0.22) continue;
+      const c = h < 0.03 ? C.umber : h < 0.08 ? C.abyss : C.indigo;
       b.set(x, y, c); b.set(x + 1, y, c);
     }
     // aircraft light on the antenna
-    b.set(5, 55, C.red); b.set(6, 55, C.rose);
-  }, s.mask((b) => { b.rect(1, 68, 13, 78, 1); b.rect(10, 96, 11, 50, 1); b.rect(91, 52, 20, 94, 1); }));
-  // vertical neon sign on the right block: magenta frame, cyan bars
+    b.set(103, 45, C.maroon);
+  }, s.mask((b) => { b.rect(1, 76, 11, 68, 1); b.rect(98, 56, 13, 88, 1); }));
+  // a dim teal sign strip on the right block, low and away from the head
+  s.paint((b) => { b.vline(108, 66, 92, C.abyss); for (let y = 68; y < 92; y += 4) b.set(108, y, C.teal); });
+  // rain
   s.paint((b) => {
-    b.rect(103, 58, 8, 30, C.plum);
-    b.strokeRect(103, 58, 8, 30, C.magenta);
-    b.vline(104, 59, 86, C.rose);
-    for (const y of [62, 70, 78]) { b.hline(105, 109, y, C.cyan); b.hline(106, 108, y + 2, C.ice); b.vline(107, y, y + 4, C.cyan); }
-  });
-  // rain streaks over the blocks
-  s.paint((b) => {
-    for (let k = 0; k < 40; k++) {
-      const x = Math.floor(hash2(k, 1, 51) * W), y = 46 + Math.floor(hash2(k, 2, 51) * 98);
-      b.line(x, y, x - 1, y + 3, C.indigo);
+    for (let k = 0; k < 34; k++) {
+      const x = Math.floor(hash2(k, 1, 57) * W), y = 60 + Math.floor(hash2(k, 2, 57) * 84);
+      b.line(x, y, x - 1, y + 3, C.navy);
     }
-  }, s.mask((b) => { b.rect(0, 66, 15, 80, 1); b.rect(9, 94, 13, 52, 1); b.rect(90, 50, 13, 96, 1); }));
-  void left; void right;
+  }, near);
 }
 
-/** Jacket material: lit planes on the near shoulder, circuit seams, purple lining at the open front. */
+/** Zip, strap with a buckle, fold shadows. */
 function echoJacketDetail(s: Stage, torso: Mask): void {
-  // key light on the near shoulder and the top of the sleeve
-  s.light(0.16, (b) => { b.ellipse(36, 82, 9, 6, 1); b.ellipse(26, 98, 5, 9, 1); });
-  s.light(0.08, (b) => b.poly([[44, 70], [54, 70], [58, 96], [46, 100]], 1), torso);
-  // lining inside the open front, just inside the trim
+  // zip line on the 3/4 centre line, slightly curved over the chest
   s.paint((b) => {
-    b.line(56, 72, 60, 92, C.grape); b.line(57, 72, 61, 90, C.orchid);
-    b.line(67, 72, 64, 92, C.grape); b.line(66, 72, 63, 88, C.plum);
-  });
-  // circuit seams: teal traces with lit nodes (sleeve, lower front panels)
-  s.paint((b) => {
-    const trace = (pts: Pt[]) => {
-      for (let i = 1; i < pts.length; i++) b.line(pts[i - 1][0], pts[i - 1][1], pts[i][0], pts[i][1], C.teal);
-      for (const [x, y] of [pts[0], pts[pts.length - 1]]) { b.set(x, y, C.cyan); }
-    };
-    trace([[30, 108], [28, 116], [28, 126], [25, 130], [25, 142]]);
-    trace([[48, 118], [48, 128], [51, 131], [51, 142]]);
-    trace([[72, 104], [72, 112], [75, 115], [75, 126]]);
-    b.set(28, 120, C.ice); b.set(48, 124, C.ice);
-  });
-  // hem with a lit trim at the bottom of the near panel
-  s.paint((b) => { b.line(44, 143, 58, 143, C.teal); });
+    b.line(64, 80, 66, 104, C.cyan); b.line(66, 104, 66, 132, C.cyan);
+    b.line(65, 80, 67, 104, C.teal); b.line(67, 104, 67, 132, C.teal);
+  }, torso);
+  // bag strap: near shoulder -> far hip, with a chrome buckle
+  s.part(STRAP_E, (b) => b.poly([[34, 80], [41, 76], [93, 128], [92, 138]], 1), { r: 2, cast: 0.25 });
+  s.paint((b) => b.line(40, 78, 91, 129, C.slate));
+  s.part(CHROME_E, (b) => b.rect(58, 96, 7, 8, 1), { r: 2, cast: 0.25, bias: -0.04 });
+  s.paint((b) => { b.rect(60, 98, 3, 4, C.navy); b.set(59, 97, C.white); });
 }
 
-/** Echo's chrome arm: segmented plates, dark joints, glowing seam, fist built from finger capsules. */
-function chromeArm(s: Stage, sh: Pt, el: Pt, fist: Pt): void {
-  const joint = { ramp: [C.ink, C.night, C.navy, C.slate, C.steel] } as Mat;
-  const [ex, ey] = el, [fx, fy] = fist;
-  // upper arm + elbow joint
-  s.part(M.chrome, (b) => b.capsule(sh[0], sh[1], ex, ey, 6.5, 1), { r: 6 });
-  s.paint((b) => b.line(sh[0] + 1, sh[1] + 6, ex - 1, ey - 5, C.slate));
-  // shoulder pauldron
-  s.part(M.chrome, (b) => b.ellipse(sh[0] - 1, sh[1] - 1, 9.5, 7.5, 1), { r: 3, bias: 0.06, cast: 0.25 });
-  s.paint((b) => { b.line(sh[0] - 9, sh[1] + 1, sh[0] + 7, sh[1] - 4, C.slate); b.set(sh[0] - 5, sh[1] - 4, C.white); b.set(sh[0] - 4, sh[1] - 4, C.white); b.set(sh[0] + 2, sh[1] + 2, C.cyan); b.set(sh[0] + 3, sh[1] + 2, C.cyan); });
-  s.part(joint, (b) => b.circle(ex, ey, 5.5, 1), { r: 4, cast: 0.25 });
-  s.paint((b) => { b.set(ex - 1, ey - 1, C.fog); b.set(ex, ey - 2, C.steel); });
-  // forearm gauntlet: thicker towards the wrist
-  const dl = Math.hypot(ex - fx, ey - fy);
-  const ux = (ex - fx) / dl, uy = (ey - fy) / dl;
-  const wx = fx + ux * 8, wy = fy + uy * 8;
-  s.part(M.chrome, (b) => { b.capsule(ex, ey, wx, wy, 6, 1); b.capsule(ex + (wx - ex) * 0.5, ey + (wy - ey) * 0.5, wx, wy, 7, 1); }, { r: 6, cast: 0.3 });
-  // panel line + glowing seam along the forearm
+/** High collar wrapping the neck: lining inside, cyan trim along the top edge. */
+function echoCollar(s: Stage, hx: number, hy: number): void {
+  const y0 = hy + 18;
+  s.part(LINING_E, (b) => b.poly([[hx - 12, y0 + 2], [hx + 14, y0 + 4], [hx + 12, y0 + 12], [hx - 10, y0 + 10]], 1), { r: 3, cast: 0 });
+  s.part(COLLAR_E, (b) => b.poly([
+    [hx - 14, y0], [hx - 7, y0 + 7], [hx + 4, y0 + 10], [hx + 14, y0 + 6], [hx + 18, y0 + 2],
+    [hx + 21, y0 + 14], [hx + 12, y0 + 20], [hx - 2, y0 + 20], [hx - 16, y0 + 14],
+  ], 1), { r: 5, bias: 0.04, cast: 0.3 });
   s.paint((b) => {
-    const n = 12;
-    for (let k = 2; k <= n - 1; k++) {
-      const t = k / n;
-      const x = Math.round(ex + (wx - ex) * t), y = Math.round(ey + (wy - ey) * t);
-      b.set(x + 3, y, k % 5 === 0 ? C.ice : C.cyan);
-    }
-    b.line(ex - 3 * uy - 2, ey + 3 * ux, wx - 3 * uy, wy + 3 * ux, C.slate);
+    b.line(hx - 14, y0, hx - 7, y0 + 7, C.cyan); b.line(hx - 7, y0 + 7, hx + 4, y0 + 10, C.cyan);
+    b.line(hx + 4, y0 + 10, hx + 14, y0 + 6, C.teal); b.line(hx + 14, y0 + 6, hx + 18, y0 + 2, C.teal);
+    // collar fold seam
+    b.line(hx - 15, y0 + 9, hx - 4, y0 + 16, C.indigo);
   });
+}
+
+/** Echo's loaned chrome arm: shoulder cap, upper arm, gauntlet, elbow bearing, fist; cyan joint seams. */
+function chromeArm(s: Stage, mood: EchoMood, sh: Pt, el: Pt, fist: Pt): void {
+  const [ex, ey] = el, [fx, fy] = fist;
+  const raised = mood === 'win';
+  const dl = Math.hypot(fx - ex, fy - ey);
+  const ux = (fx - ex) / dl, uy = (fy - ey) / dl; // along the forearm, towards the fist
+  const ax = -uy, ay = ux; // across it
+  const wx = fx - ux * 7, wy = fy - uy * 7;
+  // upper arm cylinder
+  s.part(CHROME_E, (b) => b.capsule(sh[0], sh[1] + 2, ex, ey, 7.5, 1), { r: 7, cast: 0.3 });
+  // forearm gauntlet: wider towards the wrist
+  s.part(FORE_E, (b) => {
+    b.capsule(ex, ey, wx, wy, 6.6, 1);
+    b.capsule(ex + (wx - ex) * 0.4, ey + (wy - ey) * 0.4, wx, wy, 8.2, 1);
+  }, { r: 6, cast: 0.3 });
+  s.paint((b) => {
+    // plate split across the gauntlet
+    const mx = ex + (wx - ex) * 0.38, my = ey + (wy - ey) * 0.38;
+    b.line(Math.round(mx - ax * 6), Math.round(my - ay * 6), Math.round(mx + ax * 6), Math.round(my + ay * 6), C.night);
+    // glow seam along the lower edge of the gauntlet
+    const side = raised ? -1 : 1;
+    for (let t = 0.45; t <= 0.96; t += 0.04) {
+      const x = ex + (wx - ex) * t + ax * 3.6 * side, y = ey + (wy - ey) * t + ay * 3.6 * side;
+      b.set(Math.round(x), Math.round(y), t > 0.86 ? C.ice : C.cyan);
+    }
+  });
+  // elbow bearing over both segments: dark disc, cyan seam ring, bolt
+  s.part(JOINT_E, (b) => b.circle(ex, ey, 4.8, 1), { r: 3, cast: 0.2 });
+  s.paint((b) => { b.ring(ex, ey, 3.9, C.cyan); b.set(Math.round(ex - 1), Math.round(ey - 1), C.steel); b.set(Math.round(ex), Math.round(ey - 2), C.ice); });
   // wrist ring
-  s.part(joint, (b) => b.capsule(wx - uy * 6.5, wy + ux * 6.5, wx + uy * 6.5, wy - ux * 6.5, 1.6, 1), { r: 2, cast: 0.15 });
-  s.paint((b) => { for (const t of [-3, 0, 3]) b.set(Math.round(wx + uy * t), Math.round(wy - ux * t), t === 0 ? C.ice : C.cyan); });
-  // fist: palm block, four finger capsules (seams separate them), thumb wrapping the front
-  s.part(M.chrome, (b) => b.ellipse(fx + 1, fy + 2, 8, 7.5, 1), { r: 4, cast: 0.3, bias: -0.1 });
+  s.part(JOINT_E, (b) => b.capsule(wx - ax * 7, wy - ay * 7, wx + ax * 7, wy + ay * 7, 1.8, 1), { r: 2, cast: 0.15 });
+  s.paint((b) => b.set(Math.round(wx), Math.round(wy), C.cyan));
+  // fist: back of the hand, then four curled fingers (alternating materials so seams split them), thumb
+  s.part(HAND_E, (b) => b.capsule(fx - ux * 2.5, fy - uy * 2.5, fx + ux * 1, fy + uy * 1, 7, 1), { r: 4, cast: 0.25 });
   for (let k = 0; k < 4; k++) {
-    const x = fx - 6 + k * 3.7;
-    s.part(M.chrome, (b) => b.capsule(x, fy - 5 + Math.abs(k - 1.5) * 0.7, x + 0.3, fy + 1, 2.3, 1), { r: 2, cast: 0.1, bias: -0.08 });
+    const o = (k - 1.5) * 3.4;
+    const m = k % 2 ? FING_A : FING_B;
+    s.part(m, (b) => b.capsule(fx + ax * o + ux * 1, fy + ay * o + uy * 1, fx + ax * o + ux * 5, fy + ay * o + uy * 5, 2.1, 1), { r: 2, cast: 0.15 });
   }
-  s.part(M.chrome, (b) => b.capsule(fx - 7, fy + 5, fx + 3, fy + 3, 2.6, 1), { r: 2, cast: 0.25, bias: -0.04 });
-  s.paint((b) => { for (let k = 0; k < 4; k++) b.set(Math.round(fx - 7 + k * 3.7), fy - 5 + (k === 0 || k === 3 ? 1 : 0), C.white); b.set(fx - 4, fy + 4, C.white); b.set(fx + 4, fy + 4, C.cyan); });
+  const tside = raised ? 1 : -1;
+  s.part(FING_A, (b) => b.capsule(fx + ax * 5 * tside - ux * 2, fy + ay * 5 * tside - uy * 2, fx + ax * 1 * tside + ux * 3, fy + ay * 1 * tside + uy * 3, 2.2, 1), { r: 2, cast: 0.25, bias: 0.04 });
+  s.paint((b) => {
+    // knuckle glints
+    for (const o of [-5.1, -1.7, 1.7]) b.set(Math.round(fx + ax * o + ux * 4.5 - 0.5), Math.round(fy + ay * o + uy * 4.5 - 0.5), C.white);
+  });
+  // shoulder cap over the top of the arm with a panel line; cyan joint seam below it
+  s.part(CAP_E, (b) => b.poly([[sh[0] - 9, sh[1] + 5], [sh[0] - 8, sh[1] - 3], [sh[0] - 2, sh[1] - 8], [sh[0] + 5, sh[1] - 8], [sh[0] + 10, sh[1] - 3], [sh[0] + 10, sh[1] + 4], [sh[0], sh[1] + 7]], 1), { r: 5, cast: 0.3 });
+  s.paint((b) => {
+    b.line(sh[0] - 8, sh[1] + 6, sh[0], sh[1] + 8, C.cyan); b.line(sh[0], sh[1] + 8, sh[0] + 10, sh[1] + 5, C.cyan);
+    b.line(sh[0] - 6, sh[1] - 1, sh[0] + 4, sh[1] - 6, C.steel);
+    b.set(sh[0] - 4, sh[1] - 5, C.white); b.set(sh[0] - 3, sh[1] - 6, C.white);
+    // debt tag: a small sodium barcode label on the upper arm
+    const lx = Math.round(sh[0] + (ex - sh[0]) * 0.45) - 2, ly = Math.round(sh[1] + (ey - sh[1]) * 0.45) - 1;
+    b.rect(lx, ly, 5, 3, C.sodium);
+    for (const x of [0, 2, 3]) b.vline(lx + x, ly, ly + 1, C.umber);
+  });
+}
+
+/** Skull, jaw, ear, and the cel shadows that give the face its planes. */
+function echoFaceBase(s: Stage, hx: number, hy: number): void {
+  const face = s.part(SKIN_E, (b) => {
+    b.ellipse(hx + 1, hy - 1, 14.5, 15.5, 1);
+    b.poly([[hx - 12, hy + 2], [hx - 9, hy + 12], [hx - 2, hy + 18], [hx + 5, hy + 23], [hx + 8, hy + 23], [hx + 12, hy + 18], [hx + 15, hy + 9], [hx + 15, hy]], 1);
+  }, { r: 12, cast: 0.3 });
+  // far side of the face turns away: cheekbone to jaw
+  s.light(-0.3, (b) => b.poly([[hx + 11, hy + 7], [hx + 14, hy + 1], [hx + 18, hy + 1], [hx + 18, hy + 26], [hx + 7, hy + 26], [hx + 12, hy + 16]], 1), face);
+  // jaw edge on the near side
+  s.light(-0.25, (b) => b.poly([[hx - 12, hy + 12], [hx - 3, hy + 20], [hx + 6, hy + 23], [hx + 6, hy + 25], [hx - 8, hy + 25]], 1), face);
+  // ear (near side)
+  s.part(SKIN_E, (b) => b.ellipse(hx - 13, hy + 6, 3.2, 4.8, 1), { r: 2, bias: -0.06, cast: 0 });
+  s.paint((b) => { b.vline(hx - 13, hy + 4, hy + 8, C.skinD); b.set(hx - 12, hy + 9, C.skinD); });
 }
 
 function echoFace(s: Stage, hx: number, hy: number, mood: EchoMood): void {
-  // shadow side of the face (front plane turning away on the right) + under the hair line
-  const lg = legend({ x: C.skinX, d: C.skinD, m: C.skinM, L: C.skinL, q: C.slate, Q: C.indigo });
-  // eye line at hy + 4; near eye centred at hx + 1, far eye at hx + 10
-  const ey = hy + 3;
-  if (mood === 'hurt') {
-    // squeezed shut, brows pulled together
-    s.grid(`
-      kk.....
-      .kkkk..
-      ....dk.`, lg, hx - 3, ey + 1);
-    s.grid(`
-      ..kk
-      kkk.
-      d...`, lg, hx + 8, ey + 1);
-  } else if (mood === 'win') {
-    // confident: near eye half lidded, far eye bright
-    s.grid(`
-      .kkkkk.
-      kpwqekk
-      .ddddd.`, lg, hx - 3, ey + 1);
-    s.grid(`
-      kkkk.
-      Icck.
-      ddd..`, lg, hx + 8, ey + 1);
-  } else {
-    s.grid(`
-      .kkkkk.
-      kkpqwek
-      .pqqek.
-      ..ddd..`, lg, hx - 3, ey);
-    s.grid(`
-      kkkk.
-      Ick..
-      cck..
-      dd...`, lg, hx + 8, ey);
-  }
-  // brows
-  if (mood === 'hurt') {
-    s.paint((b) => { b.line(hx - 4, ey - 4, hx + 3, ey - 2, C.navy); b.line(hx - 4, ey - 3, hx + 2, ey - 1, C.navy); b.line(hx + 7, ey - 1, hx + 11, ey - 4, C.navy); });
-  } else {
-    s.paint((b) => { b.line(hx - 4, ey - 3, hx + 3, ey - 3, C.navy); b.line(hx - 3, ey - 2, hx + 3, ey - 2, C.navy); b.set(hx - 4, ey - 2, C.navy); b.line(hx + 7, ey - 2, hx + 11, ey - 3, C.navy); });
-  }
-  // nose: shadow under the bridge, tip toward the right
+  const lg = legend({ x: C.skinX, d: C.skinD, m: C.skinM, L: C.skinL, q: C.navy, Q: C.steel });
+  const ey = hy + 2;
+  // brows: dark, straight, slightly lowered at the inner ends (focused)
   s.paint((b) => {
-    b.vline(hx + 7, ey + 2, ey + 6, C.skinM);
-    b.set(hx + 8, ey + 7, C.skinD); b.set(hx + 7, ey + 8, C.skinD); b.set(hx + 6, ey + 8, C.skinD); b.set(hx + 8, ey + 6, C.skinL);
+    if (mood === 'hurt') {
+      b.line(hx - 7, ey - 5, hx + 1, ey - 2, C.night); b.line(hx - 7, ey - 4, hx + 1, ey - 1, C.night);
+      b.line(hx + 8, ey - 2, hx + 13, ey - 5, C.night);
+    } else {
+      b.line(hx - 7, ey - 4, hx + 2, ey - 3, C.night); b.line(hx - 6, ey - 3, hx + 2, ey - 2, C.night);
+      b.line(hx + 8, ey - 2, hx + 13, ey - 4, C.night); b.line(hx + 8, ey - 1, hx + 12, ey - 3, C.night);
+    }
+  });
+  // near eye (Echo's right): lash line, steel-blue iris with a glint; far eye: cyber, cyan with a white core
+  if (mood === 'hurt') {
+    s.grid(`
+      .kk.....
+      ..kkkkk.
+      ....mdd.`, lg, hx - 6, ey);
+    s.grid(`
+      kkkkk
+      cIwck
+      .ddd.`, lg, hx + 8, ey + 1);
+  } else if (mood === 'win') {
+    s.grid(`
+      .kkkkkk.
+      kpqwqqkk
+      .mddddd.`, lg, hx - 6, ey + 1);
+    s.grid(`
+      kkkkk
+      cIwck
+      tccck
+      .ddd.`, lg, hx + 8, ey);
+  } else {
+    s.grid(`
+      ..kkkkk.
+      .kkkkkkk
+      kpqwqqk.
+      .pqqQk..
+      ..mddd..`, lg, hx - 6, ey - 1);
+    s.grid(`
+      kkkkk
+      kIwck
+      ccIck
+      tccck
+      .ddd.`, lg, hx + 8, ey - 1);
+  }
+  // cyber-eye circuit running back towards the ear on the far temple
+  s.paint((b) => { b.line(hx + 13, ey + 2, hx + 15, ey + 2, C.teal); b.set(hx + 15, ey + 3, C.teal); b.set(hx + 15, ey + 4, C.cyan); });
+  // nose: bridge shade on the far side, nostril, cast shadow down-right
+  s.paint((b) => {
+    b.line(hx + 7, ey + 2, hx + 8, ey + 8, C.skinM);
+    b.set(hx + 9, ey + 8, C.skinM); b.set(hx + 9, ey + 9, C.skinD); b.set(hx + 9, ey + 10, C.skinD);
+    b.hline(hx + 5, hx + 8, ey + 11, C.skinD); b.set(hx + 4, ey + 10, C.skinM);
+    b.hline(hx + 7, hx + 9, ey + 12, C.skinM);
   });
   // mouth
-  const my = hy + 15;
+  const my = hy + 16;
   if (mood === 'hurt') {
     s.grid(`
-      .kkkkk.
-      kwfwfwk
-      .kkkkk.`, lg, hx + 1, my - 1);
+      .xxxxx.
+      xLmLmLx
+      .xxxxx.`, lg, hx + 1, my - 1);
   } else if (mood === 'win') {
     s.grid(`
-      d......k
-      .kwwwwk.
-      ..kkkk..
-      ...dd...`, lg, hx + 1, my - 2);
+      x.....x
+      .xpppx.
+      ..xxx..
+      ..mmm..`, lg, hx + 1, my - 1);
   } else {
+    // a level line with the far corner tucked up: calm, a little cocky
     s.grid(`
-      .xxxxx
-      ..dd..`, lg, hx + 2, my);
+      ......d
+      xxxxxx.
+      .mmm...`, lg, hx + 2, my - 1);
   }
-  // cyber-eye trace running down the far cheek
-  s.paint((b) => { b.set(hx + 12, ey + 4, C.teal); b.set(hx + 12, ey + 5, C.teal); b.set(hx + 11, ey + 6, C.cyan); });
   if (mood === 'hurt') {
-    // scratch on the near cheek
-    s.paint((b) => { b.line(hx - 6, hy + 10, hx - 3, hy + 8, C.red); b.set(hx - 2, hy + 8, C.maroon); });
+    // scratch across the near cheekbone
+    s.paint((b) => { b.line(hx - 9, hy + 11, hx - 3, hy + 8, C.maroon); b.line(hx - 8, hy + 11, hx - 4, hy + 9, C.skinX); b.set(hx - 2, hy + 8, C.skinD); });
   }
 }
 
 function echoHairBack(s: Stage, hx: number, hy: number): void {
-  // back mass behind the skull, swept back to the left with a nape lock
-  s.part(M.hairEcho, (b) => {
-    b.ellipse(hx - 1, hy - 7, 17.5, 13, 1);
-    b.poly([[hx - 17, hy - 6], [hx - 20, hy + 10], [hx - 16, hy + 21], [hx - 12, hy + 12], [hx - 8, hy + 2]], 1);
-    b.poly([[hx + 12, hy - 4], [hx + 18, hy + 2], [hx + 15, hy + 8]], 1);
-    // messy crown: soft bumps, a couple of short flicks
-    for (const [x, y, r] of [[-11, -15, 5.5], [-3, -18, 6], [6, -17, 5.5], [13, -11, 4.5]] as const) b.circle(hx + x, hy + y, r, 1);
-    b.poly([[hx - 14, hy - 17], [hx - 21, hy - 19], [hx - 15, hy - 10]], 1);
-    b.poly([[hx + 1, hy - 22], [hx + 5, hy - 27], [hx + 8, hy - 20]], 1);
-    b.poly([[hx + 14, hy - 13], [hx + 21, hy - 12], [hx + 16, hy - 7]], 1);
+  s.part(HAIR_E, (b) => {
+    b.ellipse(hx - 1, hy - 5, 19, 17.5, 1);
+    // spikes swept back (viewer-left) and up
+    b.poly([[hx - 12, hy - 14], [hx - 29, hy - 16], [hx - 17, hy - 5]], 1);
+    b.poly([[hx - 15, hy - 3], [hx - 27, hy + 1], [hx - 17, hy + 6]], 1);
+    b.poly([[hx - 7, hy - 19], [hx - 18, hy - 30], [hx - 1, hy - 21]], 1);
+    b.poly([[hx + 1, hy - 21], [hx + 3, hy - 32], [hx + 10, hy - 19]], 1);
+    // nape lock down the back of the neck
+    b.poly([[hx - 18, hy], [hx - 21, hy + 16], [hx - 12, hy + 10]], 1);
   }, { r: 10, cast: 0.2 });
+  // clump lines in the back mass
   s.paint((b) => {
-    for (const [x0, y0, x1, y1, c] of [
-      [-5, -23, -11, -13, C.navy], [4, -24, 2, -14, C.navy], [11, -17, 9, -10, C.navy],
-      [-16, -10, -18, 6, C.navy], [-15, 4, -15, 16, C.navy],
-      [-9, -18, -4, -21, C.steel], [-14, -14, -10, -18, C.steel], [0, -20, 4, -21, C.slate],
-    ] as const) b.line(hx + x0, hy + y0, hx + x1, hy + y1, c);
+    for (const [x0, y0, x1, y1] of [[-8, -20, -20, -12], [-14, -6, -24, -2], [0, -22, 2, -14], [-16, 2, -19, 12]] as const) b.line(hx + x0, hy + y0, hx + x1, hy + y1, C.night);
   });
 }
 
 function echoHairFront(s: Stage, hx: number, hy: number): void {
-  // fringe: locks over the forehead, ending above the brows; tips fall between and beside the eyes
-  s.part(M.hairEcho, (b) => {
-    b.poly([
-      [hx - 15, hy - 9], [hx - 6, hy - 15], [hx + 7, hy - 15], [hx + 16, hy - 9],
-      [hx + 16, hy + 3], [hx + 14, hy - 3], [hx + 11, hy - 6], [hx + 7, hy + 1],
-      [hx + 5, hy - 6], [hx + 1, hy - 5], [hx - 3, hy - 6], [hx - 6, hy - 5],
-      [hx - 10, hy + 3], [hx - 11, hy - 4], [hx - 14, hy + 4],
-    ], 1);
-  }, { r: 5, bias: 0.12, cast: 0.25 });
-  // cyan streak: one lock on the near side of the fringe
-  s.part({ ramp: [C.abyss, C.teal, C.cyan, C.ice], rim: [C.ice, C.cyan] }, (b) => {
-    b.poly([[hx - 8, hy - 15], [hx - 3, hy - 15], [hx - 4, hy - 8], [hx - 7, hy - 5], [hx - 10, hy + 3], [hx - 10, hy - 7]], 1);
-  }, { r: 3, cast: 0.1 });
+  // undercut: buzzed far side above the temple
+  s.part(BUZZ_E, (b) => b.poly([[hx + 9, hy - 9], [hx + 17, hy - 9], [hx + 17, hy + 3], [hx + 14, hy + 2]], 1), { r: 3, cast: 0.1, clip: s.mask((b) => b.ellipse(hx + 1, hy, 16, 17, 1)) });
+  s.paint((b) => { for (let y = hy - 8; y <= hy + 1; y += 2) b.set(hx + 15, y, C.navy); });
+  // top hair: swept from the far side over to the near side
+  s.part(HAIR_E, (b) => b.poly([
+    [hx - 16, hy - 4], [hx - 15, hy - 14], [hx - 6, hy - 20], [hx + 6, hy - 20], [hx + 14, hy - 15], [hx + 18, hy - 9],
+    [hx + 10, hy - 9], [hx + 4, hy - 6], [hx - 4, hy - 7], [hx - 11, hy - 3],
+  ], 1), { r: 6, cast: 0.25, bias: 0.04 });
+  // long fringe locks falling over the near side (big clumps, each its own part)
+  const locks: Pt[][] = [
+    [[hx - 2, hy - 10], [hx + 6, hy - 9], [hx + 3, hy - 3], [hx + 1, hy - 4]],
+    [[hx - 9, hy - 10], [hx - 1, hy - 9], [hx - 4, hy - 1], [hx - 6, hy - 3]],
+    [[hx - 16, hy - 8], [hx - 9, hy - 9], [hx - 9, hy + 1], [hx - 12, hy + 12], [hx - 15, hy + 4]],
+  ];
+  for (const l of locks) s.part(HAIR_E, (b) => b.poly(l, 1), { r: 3, cast: 0.25, bias: 0.02 });
+  // the cyan streak: one bold lock from the crown down past the near eye
+  s.part(STREAK_E, (b) => b.poly([[hx - 9, hy - 19], [hx - 3, hy - 19], [hx - 6, hy - 8], [hx - 9, hy + 2], [hx - 10, hy + 8], [hx - 12, hy - 4]], 1), { r: 3, cast: 0.25 });
+  // sheen band across the crown (lit side), broken where the streak crosses
   s.paint((b) => {
-    for (const [x0, y0, x1, y1, c] of [
-      [3, -11, 6, -7, C.navy], [10, -11, 12, -6, C.navy], [-1, -12, 0, -7, C.navy],
-    ] as const) b.line(hx + x0, hy + y0, hx + x1, hy + y1, c);
-  });
+    for (let a = 200; a <= 300; a += 2) {
+      const r = a < 250 ? 15 : 14;
+      const x = Math.round(hx + Math.cos((a * Math.PI) / 180) * r), y = Math.round(hy - 6 + Math.sin((a * Math.PI) / 180) * r * 0.85);
+      if (x >= hx - 12 && x <= hx - 8) continue;
+      b.set(x, y, a > 222 && a < 285 ? C.fog : C.steel);
+      b.set(x, y + 1, a > 230 && a < 275 ? C.steel : C.slate);
+    }
+  }, s.mask((b) => { b.ellipse(hx - 1, hy - 5, 19, 17.5, 1); }));
 }
 
 // ------------------------------------------------------------------ GEARJAW
