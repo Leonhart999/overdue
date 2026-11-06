@@ -179,6 +179,39 @@ export abstract class Boss implements Clocked {
     if (old && old !== s && old !== this.running) old.return();
   }
 
+  // ------------------------------------------------------------------ entrance cinematic
+  /**
+   * Entrance cinematic, played in the 'intro' state before the name card. Runs on the boss clock
+   * with `introUpdate`; the player cannot act and nothing hurts anyone. Put the boss in its final
+   * spawn pose in a `finally` (the intro can be skipped, which closes the generator early).
+   * Default: no entrance.
+   */
+  // eslint-disable-next-line require-yield
+  *entrance(_w: World): Script { /* none */ }
+  /** Where the intro camera looks (world pixels). Scrolling maps only. */
+  introFocus(): { x: number; y: number } { return { x: this.x, y: this.y - 30 }; }
+  private introScript: Script | null = null;
+  /** The entrance has finished (or was skipped). */
+  introDone = false;
+
+  /** Advance the entrance by one step (called by World while state is 'intro'). */
+  introUpdate(w: World, dt: number): void {
+    if (this.introDone) return;
+    this.clock += dt;
+    for (const p of this.parts) if (p.flash > 0) p.flash -= dt;
+    if (!this.introScript) this.introScript = this.entrance(w);
+    if (this.introScript.next().done) { this.introScript = null; this.introDone = true; }
+  }
+
+  /** Skip the rest of the entrance (closes it, so its `finally` puts the boss in place). */
+  skipIntro(): void {
+    if (this.introDone) return;
+    const s = this.introScript;
+    this.introScript = null;
+    this.introDone = true;
+    s?.return();
+  }
+
   /** Mark that the boss was hit (keeps poise from decaying). Bosses that route damage themselves call this. */
   noteHit(): void { this.lastHitAt = this.clock; }
 

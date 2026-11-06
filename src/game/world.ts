@@ -153,7 +153,8 @@ export class World {
    */
   updateCamera(dt: number, snap = false): void {
     if (!this.scrolls || !this.player) return;
-    let t = this.arena.camera?.(this) ?? null;
+    // during the entrance cinematic the camera watches the boss
+    let t = this.state === 'intro' && this.boss && !this.boss.introDone ? this.boss.introFocus() : this.arena.camera?.(this) ?? null;
     if (!t) {
       const p = this.player, inp = this.input;
       let lx = 0, ly = 0;
@@ -207,6 +208,7 @@ export class World {
 
     this.player.update(this, input, this.playerUnscaled ? dt : wdt);
     if (this.boss && this.state !== 'intro') this.boss.update(this, wdt);
+    else if (this.boss && this.state === 'intro') this.boss.introUpdate(this, wdt);
     for (const b of this.bodies) if (!b.dead) b.update(this, wdt);
     // a jammed boss is slowed as a whole: its own bullets and telegraphs too
     const jam = this.boss && this.boss.jamT > 0 && !this.boss.dying ? JAM_SLOW : 1;

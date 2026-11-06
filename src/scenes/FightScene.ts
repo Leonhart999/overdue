@@ -16,7 +16,7 @@ import { applySettings, PauseMenu } from './pauseMenu';
 import { session } from './session';
 import { goto, H, W } from '../ui/ui';
 import { textWidth } from '../ui/crispText';
-import { heading, panel, stamp, tagText, tagWidth, txt } from '../ui/kit';
+import { heading, keycap, keyWidth, panel, stamp, tagText, tagWidth, txt } from '../ui/kit';
 
 const DT = 1 / 60;
 
@@ -27,6 +27,9 @@ export interface FightData {
   paceMul?: number;
 }
 
+/** Longest an entrance may run before it is cut short (seconds). */
+const ENTRANCE_MAX = 6;
+
 export class FightScene extends Phaser.Scene {
   world!: World;
   private gfx!: PhaserGfx;
@@ -35,7 +38,10 @@ export class FightScene extends Phaser.Scene {
   private acc = 0;
   private paused = false;
   private pause!: PauseMenu;
+  /** Seconds into the name card (after the entrance). */
   private introT = 0;
+  /** Seconds since the fight scene started (entrance + card). */
+  private cineT = 0;
   private ended = false;
   private uiCam!: Phaser.Cameras.Scene2D.Camera;
   private data0!: FightData;
@@ -48,6 +54,7 @@ export class FightScene extends Phaser.Scene {
     this.acc = 0;
     this.paused = false;
     this.introT = 0;
+    this.cineT = 0;
     this.ended = false;
   }
 
@@ -123,10 +130,17 @@ export class FightScene extends Phaser.Scene {
     }
     if (this.paused) { this.pause.update(inp.ay - this.cameras.main.scrollY); clearEdges(inp); this.render(); return; }
 
-    // intro card: the boss and player wait
+    // intro: the boss's entrance cinematic, then the name card; click / dash skips each part
     if (w.state === 'intro') {
-      this.introT += delta / 1000;
-      if (this.introT > 1.9 || (this.introT > 0.4 && (inp.firePressed || inp.dashPressed))) { w.state = 'fight'; w.stateT = 0; }
+      const dt = delta / 1000;
+      const skip = inp.firePressed || inp.dashPressed || inp.interactPressed;
+      this.cineT += dt;
+      if (!w.boss!.introDone) {
+        if ((skip && this.cineT > 0.3) || this.cineT > ENTRANCE_MAX) w.boss!.skipIntro();
+      } else {
+        this.introT += dt;
+        if (this.introT > 1.9 || (this.introT > 0.4 && skip)) { w.state = 'fight'; w.stateT = 0; }
+      }
     }
     this.acc += Math.min(delta, 100) / 1000;
     let steps = 0;
@@ -154,12 +168,30 @@ export class FightScene extends Phaser.Scene {
     w.draw(g);
     drawHud(g, w, sx, sy, (f) => this.textures.exists('ico') && this.textures.get('ico').has(f));
     w.fx.drawFlash(g, W, H);
-    if (w.state === 'intro') this.drawIntro();
+    if (w.state === 'intro' && !w.boss!.introDone) this.drawCinema();
+    if (w.state === 'intro' && w.boss!.introDone) this.drawIntro();
     this.drawPhaseCard();
     this.drawHint();
     if (this.paused) this.pause.draw(this.gfx, UI.controls);
     if (w.state === 'won' || w.state === 'lost') this.drawEndBanner();
     g.end();
+  }
+
+  /** Letterbox bars over the HUD while the entrance plays, with a skip hint. */
+  private drawCinema(): void {
+    const g = this.gfx;
+    const k = Math.min(1, this.cineT * 4);
+    const bar = Math.round(40 * k);
+    g.rect(0, 0, W, bar, P.ink, 1, 'over');
+    g.rect(0, H - bar, W, bar, P.ink, 1, 'over');
+    g.rect(0, bar, W, 1, P.red, 0.6 * k, 'over');
+    g.rect(0, H - bar - 1, W, 1, P.red, 0.6 * k, 'over');
+    if (this.cineT > 0.6) {
+      const a = Math.min(1, (this.cineT - 0.6) * 3) * (0.55 + 0.25 * Math.sin(this.cineT * 4));
+      const kw = keyWidth('SPACE');
+      keycap(g, 'SPACE', W - 16 - kw, H - 29, { layer: 'over', alpha: a });
+      tagText(g, 'SKIP', W - 22 - kw, H - 26, { color: P.fog, alpha: a, layer: 'over', spacing: 1, align: 'right' });
+    }
   }
 
   private drawIntro(): void {

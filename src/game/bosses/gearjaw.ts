@@ -168,6 +168,62 @@ export class Gearjaw extends Boss {
 
   get stripped(): boolean { return this.phase >= 1; }
 
+  // ------------------------------------------------------------------ entrance
+  /** Height above the ground while being dropped in (entrance only). */
+  private introZ = 0;
+
+  /** Dropped into the yard from above: shadow grows, crash landing, engine rev, hook raised. */
+  *entrance(w: World): Script {
+    const sx = this.x, sy = this.y;
+    try {
+      this.introZ = 300;
+      this.anim = 'hurt';
+      w.sfx('siren', 0.5);
+      // the shadow grows where he will land
+      yield* this.wait(0.7);
+      w.sfx('rev', 0.6, 0.6);
+      const T = 0.38, start = this.clock;
+      while (this.clock - start < T) {
+        const k = (this.clock - start) / T;
+        this.introZ = 300 * (1 - k * k);
+        if (w.rng.chance(0.5)) w.fx.smoke(this.x - this.facing * 26, this.y - 80 - this.introZ, 1, P.slate, 4, -30);
+        yield;
+      }
+      this.introZ = 0;
+      // impact
+      w.sfx('crush');
+      w.fx.shake(10, 0.45);
+      w.hitstop = Math.max(w.hitstop, 0.08);
+      w.fx.ring(sx, sy, 12, 110, P.amber, 0.45, 3);
+      w.fx.ring(sx, sy, 8, 70, P.white, 0.25, 2);
+      w.fx.smoke(sx, sy, 18, P.umber, 8, 18);
+      w.fx.debris(sx, sy - 10, 26, [P.rust, P.umber, P.slate, P.steel], 260);
+      yield* this.wait(0.55);
+      // engine rev: exhaust bursts, the hull shakes
+      this.anim = 'idle';
+      this.revT = 0.9;
+      w.sfx('rev');
+      const revStart = this.clock;
+      while (this.clock - revStart < 0.9) {
+        if (w.rng.chance(0.6)) w.fx.smoke(this.x - this.facing * 22 + w.rng.range(-4, 4), this.y - 84, 1, P.slate, 5, 50);
+        if (w.rng.chance(0.25)) w.fx.flame(this.x - this.facing * 22, this.y - 82);
+        yield;
+      }
+      // hook up, stomp
+      this.anim = 'attack';
+      w.sfx('stomp');
+      w.fx.shake(6, 0.3);
+      w.fx.ring(sx, sy, 20, 150, P.orange, 0.5, 2);
+      yield* this.wait(0.8);
+    } finally {
+      this.introZ = 0;
+      this.revT = 0;
+      this.anim = 'idle';
+      this.x = sx; this.y = sy;
+      this.body.x = sx; this.body.y = sy;
+    }
+  }
+
   hookOrigin(): [number, number] { return [this.x + this.facing * 39, this.y - 44]; }
 
   private updateStatus(): void {
@@ -547,17 +603,20 @@ export class Gearjaw extends Boss {
 
   // ------------------------------------------------------------------ draw
   draw(g: Gfx, w: World): void {
-    g.ellipse(this.x, this.y + 2, 40, 12, P.ink, 0.5, 'floor');
+    // shadow (shrinks and fades while he is still high above during the entrance)
+    const zk = Math.min(1, this.introZ / 300);
+    g.ellipse(this.x, this.y + 2, 40 * (1 - 0.5 * zk), 12 * (1 - 0.5 * zk), P.ink, 0.5 * (1 - 0.4 * zk), 'floor');
+    if (this.introZ > 0) g.ring(this.x, this.y + 2, 44, 1, P.red, 0.4 + 0.3 * Math.sin(w.realTime * 18), 'floor');
     const key = this.stripped ? 'bt_gearjaw_stripped' : 'bt_gearjaw';
     let frame: string = this.anim === 'idle' ? (Math.floor(this.animClock * 2.5) % 2 ? 'idle2' : 'idle1') : this.anim;
     if (this.staggered) frame = 'hurt';
     const shakeX = this.revT > 0 || this.charging ? w.rng.range(-1, 1) : 0;
     const flash = this.body.flash > 0;
-    g.img(key, frame, this.x + shakeX, this.y + 11, {
+    g.img(key, frame, this.x + shakeX, this.y + 11 - Math.round(this.introZ), {
       flipX: this.facing < 0, fill: flash ? P.pale : undefined, depth: this.y,
     });
     // engine glow (weak point behind)
-    const ex = this.x - this.facing * 30, ey = this.y - 62;
+    const ex = this.x - this.facing * 30, ey = this.y - 62 - Math.round(this.introZ);
     g.circle(ex, ey, 6 + Math.sin(this.animClock * 8), P.orange, this.phase === 0 ? 0.25 : 0.4, 'light');
     if (this.stripped) g.circle(this.x - this.facing * 3, this.y - 35, 16, P.orange, this.cooling > 0 ? 0.55 : 0.25, 'light');
     if (this.cooling > 0) g.circle(this.x, this.y - 36, 34, P.ice, 0.12 + 0.06 * Math.sin(this.animClock * 12), 'light');
