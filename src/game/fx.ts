@@ -105,8 +105,9 @@ export class Fx {
   }
 
   label(x: number, y: number, text: string, c: number = P.amber, dur = 0.9): void {
-    // stack labels that would overlap a fresh one at the same spot
-    let yy = y;
+    // stack labels that would overlap a fresh one at the same spot; keep them below the HUD
+    let yy = Math.max(y, 72);
+    x = Math.max(40, Math.min(600, x));
     for (let i = 0; i < 4; i++) {
       if (!this.labels.some((l) => l.t < 0.5 && Math.abs(l.x - x) < 40 && Math.abs(l.y - yy) < 12)) break;
       yy -= 13;
