@@ -237,7 +237,7 @@ export class HubScene extends Phaser.Scene {
     g.begin();
     if (this.overlay) w.prompt = null;
     w.draw(g);
-    drawHud(g, w, sx, sy);
+    drawHud(g, w, sx, sy, (f) => this.textures.exists('ico') && this.textures.get('ico').has(f));
     if (!this.overlay) g.text('E 互动 · 武器架换武器 · 义体台试义体 · 右边是训练场 · 电梯出发', W / 2, 344, { layer: 'ui', align: 'center', color: P.slate });
     w.fx.drawFlash(g, W, H);
     if (this.overlay === 'bench') this.drawBench();

@@ -148,7 +148,7 @@ export class FightScene extends Phaser.Scene {
     const g = this.gfx;
     g.begin();
     w.draw(g);
-    drawHud(g, w, sx, sy);
+    drawHud(g, w, sx, sy, (f) => this.textures.exists('ico') && this.textures.get('ico').has(f));
     w.fx.drawFlash(g, W, H);
     if (w.state === 'intro') this.drawIntro();
     this.drawPhaseCard();

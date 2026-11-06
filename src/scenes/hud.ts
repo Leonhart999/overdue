@@ -11,7 +11,11 @@ const SLOT_SHORT: Record<string, string> = {
   head_none: '—', head_optics: '目镜', head_reflex: '神经', head_ballistic: '弹道',
 };
 
-export function drawHud(g: Gfx, w: World, camX: number, camY: number): void {
+/**
+ * `hasIcon` tells whether the 'ico' sheet has a frame (scenes pass a texture-manager check);
+ * without it the slots fall back to short text names.
+ */
+export function drawHud(g: Gfx, w: World, camX: number, camY: number, hasIcon: (frame: string) => boolean = () => false): void {
   const p = w.player;
   // ---- hearts
   const shown = Math.min(p.maxHp, 10);
@@ -57,17 +61,25 @@ export function drawHud(g: Gfx, w: World, camX: number, camY: number): void {
     const bx = 640 - 8 - (4 - i) * 38, by = 4;
     const id = p.loadout.cyber[s.slot];
     const empty = id === 'core_none' || id === 'head_none';
-    g.rect(bx, by, 34, 26, P.night, 0.9, 'ui');
-    g.strokeRect(bx, by, 34, 26, 1, empty ? P.navy : s.frac >= 1 ? P.slate : P.indigo, 1, 'ui');
-    if (s.frac < 1) g.rect(bx + 1, by + 1, 32, 24 * (1 - s.frac), P.ink, 0.75, 'ui');
-    g.text(SLOT_SHORT[id] ?? CYBER_TEXT[id].name, bx + 17, by + 1, { layer: 'ui', align: 'center', color: empty ? P.slate : s.frac >= 1 ? P.pale : P.steel });
-    g.text(s.extra || SLOT_TEXT[s.slot].key, bx + 17, by + 13, { layer: 'ui', align: 'center', color: s.slot === 'legs' || s.slot === 'arm' ? COL.player : P.slate, alpha: 0.85 });
+    const icon = hasIcon(id);
+    const BH = icon ? 38 : 26;
+    g.rect(bx, by, 34, BH, P.night, 0.9, 'ui');
+    g.strokeRect(bx, by, 34, BH, 1, empty ? P.navy : s.frac >= 1 ? P.slate : P.indigo, 1, 'ui');
+    if (icon) {
+      g.img('ico', id, bx + 17, by + 14, { layer: 'ui', ox: 0.5, oy: 0.5, alpha: empty ? 0.5 : 1 });
+      if (s.frac < 1) g.rect(bx + 1, by + 1, 32, 26 * (1 - s.frac), P.ink, 0.7, 'ui');
+      g.text(s.extra || SLOT_TEXT[s.slot].key, bx + 17, by + 25, { layer: 'ui', align: 'center', color: s.slot === 'legs' || s.slot === 'arm' ? COL.player : P.slate, alpha: 0.85 });
+    } else {
+      if (s.frac < 1) g.rect(bx + 1, by + 1, 32, 24 * (1 - s.frac), P.ink, 0.75, 'ui');
+      g.text(SLOT_SHORT[id] ?? CYBER_TEXT[id].name, bx + 17, by + 1, { layer: 'ui', align: 'center', color: empty ? P.slate : s.frac >= 1 ? P.pale : P.steel });
+      g.text(s.extra || SLOT_TEXT[s.slot].key, bx + 17, by + 13, { layer: 'ui', align: 'center', color: s.slot === 'legs' || s.slot === 'arm' ? COL.player : P.slate, alpha: 0.85 });
+    }
     const lock = s.slot === 'legs' ? p.locked.legs : s.slot === 'arm' ? p.locked.arm : 0;
     if (lock > 0) {
-      g.rect(bx, by, 34, 26, P.maroon, 0.7, 'ui');
-      g.line(bx + 4, by + 4, bx + 30, by + 22, 2, P.red, 1, 'ui');
-      g.line(bx + 30, by + 4, bx + 4, by + 22, 2, P.red, 1, 'ui');
-      g.text(`封锁 ${Math.ceil(lock)}`, bx + 17, by + 27, { layer: 'ui', align: 'center', color: P.red });
+      g.rect(bx, by, 34, BH, P.maroon, 0.7, 'ui');
+      g.line(bx + 4, by + 4, bx + 30, by + BH - 4, 2, P.red, 1, 'ui');
+      g.line(bx + 30, by + 4, bx + 4, by + BH - 4, 2, P.red, 1, 'ui');
+      g.text(`封锁 ${Math.ceil(lock)}`, bx + 17, by + BH + 1, { layer: 'ui', align: 'center', color: P.red });
     }
   });
 
