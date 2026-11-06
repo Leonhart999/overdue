@@ -441,14 +441,14 @@ export class Gantry {
       const f = clamp(eta / 9, 0, 1);
       g.rect(cx - L / 2, y - 2, L, 5, P.ink, 0.85, 'top');
       g.rect(cx - L / 2, y - 2, L * f, 5, COL.danger, 0.95, 'top');
-      g.text(`前方龙门架 ${Math.ceil(eta)} · 躲进车厢连接处`, cx, y - 16, { layer: 'top', color: COL.danger, align: 'center', stroke: true });
+      g.text(`前方龙门架 ${Math.ceil(eta)} · 躲进车厢连接处`, cx, y - 16, { layer: 'top', color: COL.danger, align: 'center', stroke: true, overDark: true });
       // arrow at the front edge of the view
       const ax = v.x + v.w - 14, ay = b.y + b.h / 2;
       const pulse = 0.6 + 0.4 * Math.sin(w.realTime * 14);
       g.poly([ax + 8, ay, ax - 4, ay - 9, ax - 4, ay + 9], COL.danger, pulse, 'top');
     }
     if (this.state === 'warn' || (this.state === 'pass' && eta < 99)) {
-      for (const gp of TRAIN.gaps) if (gp.x0 >= b.x + 2 && w.onScreen(gp.cx, gp.walkY0, -10)) g.text('安全', gp.cx, gp.walkY0 - 12, { layer: 'top', color: P.white, align: 'center', stroke: true });
+      for (const gp of TRAIN.gaps) if (gp.x0 >= b.x + 2 && w.onScreen(gp.cx, gp.walkY0, -10)) g.text('安全', gp.cx, gp.walkY0 - 12, { layer: 'top', color: P.white, align: 'center', stroke: true, overDark: true });
     }
     if (this.state === 'pass' && w.onScreen(this.x, b.y + 40, -40)) {
       g.img('train_gantry', 'beam', this.x, b.y + b.h + TRAIN.side + 20, { layer: 'top' });
@@ -696,7 +696,7 @@ export class TrainState {
     this.gantry.drawTop(g, w);
     if (this.detachT >= 0) {
       const gp = TRAIN.gaps[this.rear];
-      g.text(`脱钩 ${Math.ceil(this.detachT)}`, gp.cx, b.y - 12, { layer: 'top', color: COL.danger, align: 'center', stroke: true });
+      g.text(`脱钩 ${Math.ceil(this.detachT)}`, gp.cx, b.y - 12, { layer: 'top', color: COL.danger, align: 'center', stroke: true, overDark: true });
       g.circle(gp.cx, b.y + b.h / 2, 26, P.red, 0.3 + 0.3 * Math.sin(w.realTime * 20), 'light');
     }
     if (this.dark > 0.02) {
