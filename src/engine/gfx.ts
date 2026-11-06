@@ -43,6 +43,8 @@ export interface TextOpts {
   alpha?: number;
   scale?: number;
   stroke?: boolean;
+  /** World text drawn above blackout darkness (labels, damage numbers). */
+  overDark?: boolean;
 }
 
 export interface Gfx {

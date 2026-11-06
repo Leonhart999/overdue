@@ -240,9 +240,9 @@ export class Kade extends Boss {
   /** Ground-ish point the hit came from. */
   private hitSource(w: World, h: Hit): [number, number] {
     if (h.src === 'arc') {
-      const nodes = (w.player.weapon as unknown as { nodes?: Body[] }).nodes;
-      const i = nodes ? nodes.indexOf(this.body) : -1;
-      if (nodes && i > 0) return [nodes[i - 1].hx, nodes[i - 1].hy];
+      const nodes = w.player.weapon.chainNodes();
+      const i = nodes.indexOf(this.body);
+      if (i > 0) return [nodes[i - 1].hx, nodes[i - 1].hy];
       return [w.player.x, w.player.y - 9];
     }
     if (h.dx !== undefined && h.dy !== undefined && (h.dx || h.dy)) return [h.x - h.dx * 40, h.y - h.dy * 40];

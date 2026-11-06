@@ -37,6 +37,8 @@ export abstract class Weapon {
   onPerfectDodge?(w: World, p: Player): void;
   /** Called when the fight ends (stop loops). */
   dispose(): void {}
+  /** Arc caster only: the bodies the current arc chains through, player side first (empty otherwise). */
+  chainNodes(): readonly Body[] { return []; }
 
   muzzle(p: Player, len: number): [number, number] {
     return [p.handX + Math.cos(p.aim) * len, p.handY + Math.sin(p.aim) * len];
@@ -345,6 +347,8 @@ class ArcCaster extends Weapon {
   private links: number[][] = [];
   private firing = false;
   private nodes: Body[] = [];
+
+  chainNodes(): readonly Body[] { return this.nodes; }
 
   update(w: World, p: Player, inp: InputState, dt: number, canFire: boolean): void {
     this.firing = canFire && inp.fire;

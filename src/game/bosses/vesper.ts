@@ -279,9 +279,9 @@ export class Vesper extends Boss implements TrainRider {
     }
     if (src === 'arc') {
       // chained through the catenary (pantograph / junction box) into her
-      const nodes = (w.player.weapon as unknown as { nodes?: Body[] }).nodes;
-      const i = nodes ? nodes.indexOf(this.body) : -1;
-      if (nodes && i > 0 && isConductor(nodes[i - 1])) return { mul: 1.5, tag: 'normal' };
+      const nodes = w.player.weapon.chainNodes();
+      const i = nodes.indexOf(this.body);
+      if (i > 0 && isConductor(nodes[i - 1])) return { mul: 1.5, tag: 'normal' };
     }
     if (src === 'deflect') {
       w.fx.label(this.x, this.y - 56, '弹回命中', P.amber, 0.8);

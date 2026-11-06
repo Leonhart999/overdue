@@ -150,7 +150,7 @@ function drawOffscreen(g: Gfx, w: World, camX: number, camY: number): void {
   };
   const pulse = 0.65 + 0.35 * Math.sin(w.realTime * 14);
   for (const h of w.hazards) {
-    if (h.dead || !h.visible || h.team === 'player' || !h.hitsPlayer) continue;
+    if (h.dead || !h.visible || h.team === 'player' || (!h.hitsPlayer && !h.marker)) continue;
     const [x, y] = nearestOnShape(h.shape, cx, cy);
     mark(x, y, h.warning ? P.red : P.rose, 7, h.warning ? pulse : 0.9);
   }

@@ -30,6 +30,8 @@ export class Hazard {
   color = COL.danger;
   /** Draw the warning shape. */
   visible = true;
+  /** Scrolling maps: show an off-screen edge marker even when it deals no hits (visual-only telegraphs). */
+  marker = false;
   /** Draw a fill while active (false when the attack draws its own visuals). */
   activeFill = true;
   readonly hitSet = new Set<number>();

@@ -138,7 +138,7 @@ export class PhaserGfx implements Gfx {
     t.setAlpha(o.alpha ?? 1);
     t.setScale(o.scale ?? 1);
     const layer = o.layer ?? 'top';
-    t.setDepth((layer === 'ui' ? DEPTH.uiText : DEPTH.topText) + this.order.text++ * 0.01);
+    t.setDepth((layer === 'ui' ? DEPTH.uiText : o.overDark ? DEPTH.dark + 50 : DEPTH.topText) + this.order.text++ * 0.01);
     this.filter(t, layer === 'ui');
   }
 

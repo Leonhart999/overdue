@@ -186,11 +186,11 @@ export class Fx {
     }
     for (const n of this.nums) {
       const a = n.t > 0.5 ? 1 - (n.t - 0.5) / 0.25 : 1;
-      g.text(String(Math.round(n.v)), n.x, n.y - 12, { color: n.c, align: 'center', alpha: a, layer: 'top' });
+      g.text(String(Math.round(n.v)), n.x, n.y - 12, { color: n.c, align: 'center', alpha: a, layer: 'top', overDark: true });
     }
     for (const l of this.labels) {
       const a = l.t > l.dur - 0.25 ? (l.dur - l.t) / 0.25 : 1;
-      g.text(l.text, l.x, l.y - 16 - l.t * 10, { color: l.c, align: 'center', alpha: a, layer: 'top' });
+      g.text(l.text, l.x, l.y - 16 - l.t * 10, { color: l.c, align: 'center', alpha: a, layer: 'top', overDark: true });
     }
   }
 
