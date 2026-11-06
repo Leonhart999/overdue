@@ -42,6 +42,17 @@ class Lux extends Boss {
 - Multi-part bosses (heads): give each `BossPart` its own `dmgMul`, `invulnerable` or override `hurt`. Parts are bodies: set `targetable`, `solid`, `r/hz/hr`.
 - `this.status` is shown under the HP bar (e.g. `断颈 3/8`).
 
+### Script safety (learned the hard way)
+
+- Never assign `this.script` directly. Use `this.setScript(s)`: it closes the old generator with `.return()`, so `finally` blocks run. Calling it from inside the running script is fine (the old one is closed at its next yield).
+- Put every flag a script sets (`invuln`, `charging`, `transitioning`, part `solid`/`targetable`, shields, console locks) in a `try { ... } finally { reset }`. Scripts can be closed at any step by a stagger, a phase change or death.
+- Phase changes: HP thresholds call `transition()` automatically. Event-driven phases set `this.phase` and call `this.beginPhase(w, phase)`. Transitions are protected: `inTransition` blocks stagger and poise, and a threshold crossed during a stagger waits until the stagger ends.
+- Bosses that route damage themselves (heads, stumps) must call `this.noteHit()` so poise does not decay while they are being hit. Piercing shots carry `Hit.srcId`; count one per projectile on multi-part bodies.
+- Move with the boss clock delta inside scripts (`this.clock - last`), never a fixed `1/60`, so the jack-arm jam (`JAM_SLOW`) and slow motion apply. A jammed boss's bullets and its own hazards are slowed by the world too.
+- The telegraph shape must be at least as large as the real hit area (lane width = 2 × (body.r + player.r + margin); warning rings never shrink below the hit radius).
+- HP scales with `tierHp(tier)` (×1 / 1.35 / 1.7 / 2.0); use it for extra HP pools (heads).
+- Optional `Arena.botHint(w)`: tells the autopilot where to stand (e.g. dry ground before the water goes live), so the headless sims exercise the arena.
+
 ## Rules for fun bosses
 
 1. Every attack has a readable wind-up (red telegraph or a clear animation + sound) and a recovery window.
