@@ -1,23 +1,33 @@
 /**
- * MADAME LUX — holo-idol loan shark on the Neon Bazaar club stage. Floats, splits into clones.
+ * MADAME LUX — holo-idol loan shark in the Neon Bazaar club (a 1280 px scrolling map, see
+ * arenas/club.ts). Floats, splits into clones.
  *
- * P1 (100-65%) : 2 clones. Kiss (heart-shaped soft burst), fan (5 rotating streams), swap (she and a
- *                clone flash and trade places), spot flare (punishes standing in a spotlight).
- * P2 (65-30%)  : 3 clones. Spotlight laser from a stage mark: snapped to 8 directions, 1 s telegraph
- *                with the full reflected path; mirrors bounce it, a reflection that crosses her deals
+ * P1 (100-65%) : 2 clones (projectors west A + VIP A). Kiss (heart-shaped soft burst), fan
+ *                (5 rotating streams), swap (she and a clone flash and trade places, across the
+ *                map if the clone is in a side zone), spot flare (punishes standing in a spotlight).
+ *                Turntable still.
+ * P2 (65-30%)  : 3 clones (+ VIP B). Turntable turns 20 deg/s. Spotlight laser from a stage mark:
+ *                the turntable locks on a 45-degree step first, then 8 directions, 1 s telegraph with
+ *                the full path (mirrors and glass bounce it); a reflection that crosses her deals
  *                300 + 75 poise, any segment pops clones. Below 45% the last laser sweeps. Floor full on.
- * P3 (<=30%)   : Encore at the stage centre: heals 2%/s (never above 30%) while spiralling hearts.
- *                Poise gain x3 during the encore; a blackout or a full poise break interrupts it.
+ * P3 (<=30%)   : all 4 projectors (3 clones, one spare). Turntable 40 deg/s. Encore at the turntable
+ *                centre: heals 2%/s (never above 30%) while spiralling hearts. Poise gain x3 during
+ *                the encore; a blackout or a full poise break interrupts it.
+ *
+ * Where she is: the real Lux floats over the stage / centre, within ~260 px of the player. After a
+ * swap into a side zone she stays there, hopping, until she swaps again; if she has been off
+ * screen for 4 s she swaps (or blinks) back next to the player. Clones float in their projector's
+ * zone; clones more than 360 px from the player sit out the shared moves.
  *
  * Real vs clone: only the real Lux casts a shadow in a spotlight (clones turn see-through there),
  * clones flicker now and then, are tied to a projector by a faint beam, can be walked through and
  * glitch out in one hit without touching her HP. Their bullets are real.
  */
 import { COL, P, type Gfx } from '../../engine/gfx';
-import { angleTo, clamp, dist, norm, segDist } from '../../engine/math';
+import { angleTo, clamp, dist, norm, segDist, type Rect } from '../../engine/math';
 import type { Script } from '../../engine/script';
 import { Boss, BossPart, type HitTag } from '../boss';
-import { club, findStage, MARKS, STAGE_CENTRE, traceBeam, type BeamPath, type ClubStage, type Hologram, type PopReason, type Projector, type StageListener } from '../arenas/club';
+import { club, ENCORE_POS, FLOAT, findStage, MARKS, traceBeam, zoneOf, type BeamPath, type ClubStage, type Hologram, type PopReason, type Projector, type StageListener, type ZoneId } from '../arenas/club';
 import { shapeHits, type Hit } from '../types';
 import type { World } from '../world';
 import type { BossDef } from './registry';
@@ -28,6 +38,14 @@ const BASE_HP = 3250;
 const HEART = { frame: 'heart', glowColor: P.magenta, r: 3.5, life: 5 };
 /** Chest height of the figure above its ground point. */
 const CHEST = 30;
+/** Projectors (stage order: west A, west B, VIP A, VIP B) switched on in each phase. */
+const ACTIVE_PROJ = [[0, 2], [0, 2, 3], [0, 1, 2, 3]];
+/** Turntable speed per phase (deg/s). */
+const TABLE_DEG = [0, 20, 40];
+/** Clones farther than this from the player (x) sit out the shared moves. */
+const CAST_RANGE = 360;
+/** Off screen this long -> she comes back to the player. */
+const OFFSCREEN_MAX = 4;
 
 interface LaserState {
   /** Sweep only: the bounced path at the end of the sweep, shown during the warning. */
@@ -55,6 +73,8 @@ class LuxClone extends BossPart implements Hologram {
     this.glitchAt = 1 + (this.id % 7) * 0.3;
   }
   get live(): boolean { return !this.dead && this.state !== 'glitch'; }
+  /** Clones float in their projector's zone. */
+  get zone(): ZoneId { return this.proj.zone; }
 
   pop(w: World, why: PopReason): void {
     if (this.dead || this.state === 'glitch') return;
@@ -112,6 +132,8 @@ export class Lux extends Boss implements StageListener {
   private healShown = 0;
   private laser: LaserState | null = null;
   private lastPick = '';
+  /** Seconds the real Lux has been off screen. */
+  offT = 0;
 
   constructor(w: World, tier: number, x: number, y: number) {
     super(w, tier, x, y, BASE_HP);
@@ -168,7 +190,12 @@ export class Lux extends Boss implements StageListener {
     if (st) {
       st.floorMode = this.dying ? 'off' : this.encore ? 'encore' : this.phase === 0 ? 'light' : 'full';
       this.vulnMul = st.dark ? 1.5 : 1;
+      const act = ACTIVE_PROJ[this.phase] ?? ACTIVE_PROJ[2];
+      st.projectors.forEach((p, i) => { p.active = !this.dying && act.includes(i); });
+      st.table.base = this.dying ? 0 : (TABLE_DEG[this.phase] ?? 40) * (Math.PI / 180);
     }
+    if (w.scrolls && !this.dying && w.state === 'fight' && !w.onScreen(this.x, this.y - CHEST)) this.offT += dt;
+    else this.offT = 0;
     if (this.staggered) this.laser = null;
     this.manageClones(w);
     if (this.encore && !this.staggered) {
@@ -204,11 +231,15 @@ export class Lux extends Boss implements StageListener {
     this.clones = this.clones.filter((c) => !c.dead);
     if (!st || this.dying || st.dark || w.state !== 'fight') return;
     const want = [2, 3, 3][this.phase] ?? 3;
-    if (this.clones.filter((c) => c.live).length >= want) return;
+    const live = this.clones.filter((c) => c.live);
+    if (live.length >= want) return;
     const free = st.projectors.filter((p) => p.ready);
     if (!free.length) return;
-    const proj = w.rng.pick(free);
-    const [x, y] = this.pickSpot();
+    // spread the clones: prefer a projector in the zone with the fewest clones
+    const count = (z: ZoneId) => live.filter((c) => c.zone === z).length;
+    const least = Math.min(...free.map((p) => count(p.zone)));
+    const proj = w.rng.pick(free.filter((p) => count(p.zone) === least));
+    const [x, y] = this.pickSpot(FLOAT[proj.zone]);
     const c = new LuxClone(this, proj, x, y);
     c.shotT = w.rng.range(0, 1);
     proj.link = c;
@@ -218,13 +249,24 @@ export class Lux extends Boss implements StageListener {
     w.sfx('blink', 0.4, 1.3);
   }
 
-  /** A floating spot away from the player, mirrors and the other figures. */
-  /** `from`: keep the new spot within ~150 px of it (Lux hops, she does not cross the room). */
-  private pickSpot(from?: { x: number; y: number }): [number, number] {
+  /** Where the real Lux floats: the part of the centre zone near the player, or her side zone after a swap. */
+  private homeRegion(centre = false): Rect {
+    const z = zoneOf(this.x);
+    if (z !== 'centre' && !centre) return FLOAT[z];
+    const c = FLOAT.centre, px = this.w.player.x;
+    const lo = clamp(px - 260, c.x, c.x + c.w - 100), hi = Math.max(lo + 100, clamp(px + 260, c.x + 100, c.x + c.w));
+    return { x: lo, y: c.y, w: hi - lo, h: c.h };
+  }
+
+  /**
+   * A floating spot inside `region`, away from the player, mirrors and the other figures.
+   * `from`: keep the new spot within ~150 px of it (Lux hops, she does not cross the room).
+   */
+  private pickSpot(region: Rect, from?: { x: number; y: number }): [number, number] {
     const w = this.w, p = w.player, rng = w.rng;
     let best: [number, number] = [this.x, this.y], bs = -Infinity;
     for (let i = 0; i < 14; i++) {
-      const x = rng.range(64, 576), y = rng.range(86, 250);
+      const x = rng.range(region.x, region.x + region.w), y = rng.range(region.y, region.y + region.h);
       const d = dist(x, y, p.x, p.y);
       let s = -Math.abs(d - (from ? 95 : 130)) + (d < 70 ? -300 : 0);
       let near = 999;
@@ -238,6 +280,12 @@ export class Lux extends Boss implements StageListener {
     return best;
   }
 
+  /** Float (she is a hologram: through glass and over the counter, never out of the club). */
+  private moveTo(x: number, y: number): void {
+    [this.x, this.y] = this.w.clampToBounds(x, y, 10);
+    this.body.x = this.x; this.body.y = this.y;
+  }
+
   private *glideTo(tx: number, ty: number, speed: number, maxT: number): Script {
     const end = this.clock + maxT;
     let last = this.clock;
@@ -247,25 +295,30 @@ export class Lux extends Boss implements StageListener {
       const d = dist(this.x, this.y, tx, ty);
       if (d < 2) break;
       const step = Math.min(d, speed * dt);
-      this.w.moveCircle(this, ((tx - this.x) / d) * step, ((ty - this.y) / d) * step, { ignore: this.body });
-      this.body.x = this.x; this.body.y = this.y;
+      this.moveTo(this.x + ((tx - this.x) / d) * step, this.y + ((ty - this.y) / d) * step);
       yield;
     }
   }
 
   private *reposition(dur: number): Script {
-    for (const c of this.clones) if (c.live) [c.tx, c.ty] = this.pickSpot();
-    const [x, y] = this.pickSpot(this);
+    for (const c of this.clones) if (c.live) [c.tx, c.ty] = this.pickSpot(FLOAT[c.zone]);
+    const [x, y] = this.pickSpot(this.homeRegion(), this);
     yield* this.glideTo(x, y, this.glideSpeed, dur);
   }
 
-  /** Lux plus every live clone: everyone performs the same move. */
+  /** Clones close enough to the player to join a shared move. */
+  private nearClones(): LuxClone[] {
+    const px = this.w.player.x;
+    return this.liveClones().filter((c) => Math.abs(c.x - px) < CAST_RANGE);
+  }
+
+  /** Lux plus every live clone near the player: everyone performs the same move. */
   private casters(): { x: number; y: number; clone: LuxClone | null }[] {
-    return [{ x: this.x, y: this.y, clone: null }, ...this.liveClones().map((c) => ({ x: c.x, y: c.y, clone: c }))];
+    return [{ x: this.x, y: this.y, clone: null }, ...this.nearClones().map((c) => ({ x: c.x, y: c.y, clone: c }))];
   }
 
   private cloneShots(dt: number, every: number): void {
-    for (const c of this.liveClones()) {
+    for (const c of this.nearClones()) {
       c.shotT -= dt;
       if (c.shotT > 0) continue;
       c.shotT = every;
@@ -277,6 +330,7 @@ export class Lux extends Boss implements StageListener {
   *brain(w: World): Script {
     yield* this.wait(0.7);
     for (;;) {
+      if (this.offT > OFFSCREEN_MAX) { yield* this.comeBack(); continue; }
       if (this.phase >= 2 && this.encoreCd <= 0) { yield* this.encoreRoutine(); continue; }
       yield* this.reposition(this.tele(this.phase === 0 ? 1.0 : 0.8) + w.rng.range(0, 0.4));
       yield* this.wait(this.tele(0.2));
@@ -389,26 +443,25 @@ export class Lux extends Boss implements StageListener {
     yield* this.wait(this.tele(0.7));
   }
 
-  private *swap(): Script {
+  /** Trade places with a clone (default: the one nearest the player, anywhere on the map). */
+  private *swap(target?: LuxClone): Script {
     const w = this.w;
     const cl = this.liveClones();
     if (!cl.length) return;
-    let c = cl[0];
-    for (const o of cl) if (dist(o.x, o.y, w.player.x, w.player.y) < dist(c.x, c.y, w.player.x, w.player.y)) c = o;
+    let c = target ?? cl[0];
+    if (!target) for (const o of cl) if (dist(o.x, o.y, w.player.x, w.player.y) < dist(c.x, c.y, w.player.x, w.player.y)) c = o;
     this.anim = 'cast';
     const warn = this.tele(0.55);
-    const ring = (x: number, y: number) => this.hazard({ k: 'circle', x, y: y - CHEST, r: 16 }, warn, 0, (h) => { h.hitsPlayer = false; h.color = P.magenta; });
-    ring(this.x, this.y);
-    ring(c.x, c.y);
+    this.swapRing(this.x, this.y, warn);
+    this.swapRing(c.x, c.y, warn);
     w.sfx('telegraph', 0.6, 1.6);
     yield* this.wait(warn);
     if (!c.live) { this.anim = 'idle'; return; }
     w.fx.ghost('lux', 'cast', this.x, this.y - 4, { tint: P.rose, alpha: 0.5, flipX: this.facing < 0 }, 0.35);
     const [ax, ay] = [this.x, this.y];
-    this.x = c.x; this.y = c.y;
+    this.moveTo(c.x, c.y);
     c.x = ax; c.y = ay; c.tx = ax; c.ty = ay;
-    this.w.moveCircle(this, 0, 0, { ignore: this.body });
-    this.body.x = this.x; this.body.y = this.y;
+    this.offT = 0;
     w.fx.burst(this.x, this.y - CHEST, 10, P.rose, 80, 0.3, 1);
     w.fx.burst(c.x, c.y - CHEST, 10, P.rose, 80, 0.3, 1);
     w.sfx('blink');
@@ -420,6 +473,34 @@ export class Lux extends Boss implements StageListener {
     w.sfx('spray', 0.7, 1.5);
     this.anim = 'idle';
     yield* this.wait(this.tele(0.55));
+  }
+
+  private swapRing(x: number, y: number, warn: number): void {
+    this.hazard({ k: 'circle', x, y: y - CHEST, r: 16 }, warn, 0, (h) => { h.hitsPlayer = false; h.color = P.magenta; });
+  }
+
+  /** Off screen too long: swap with a clone in view, or blink to the stage next to the player. */
+  private *comeBack(): Script {
+    const w = this.w, p = w.player;
+    let best: LuxClone | null = null;
+    for (const c of this.liveClones()) {
+      if (!w.onScreen(c.x, c.y - CHEST, 24)) continue;
+      if (!best || dist(c.x, c.y, p.x, p.y) < dist(best.x, best.y, p.x, p.y)) best = c;
+    }
+    if (best) { yield* this.swap(best); return; }
+    const [x, y] = this.pickSpot(this.homeRegion(true));
+    this.anim = 'cast';
+    const warn = this.tele(0.55);
+    this.swapRing(this.x, this.y, warn);
+    this.swapRing(x, y, warn);
+    w.sfx('telegraph', 0.6, 1.6);
+    yield* this.wait(warn);
+    this.moveTo(x, y);
+    this.offT = 0;
+    w.fx.burst(this.x, this.y - CHEST, 10, P.rose, 80, 0.3, 1);
+    w.sfx('blink');
+    this.anim = 'idle';
+    yield* this.wait(this.tele(0.4));
   }
 
   private *flare(): Script {
@@ -458,14 +539,28 @@ export class Lux extends Boss implements StageListener {
   }
 
   private *laserAttack(count: number): Script {
-    const w = this.w;
-    // go to a stage mark (they line up with the mirrors)
+    const w = this.w, st = this.stage;
+    // go to a stage mark; meanwhile the turntable runs on to the next 45-degree step and locks
     const p = w.player;
     const marks = [...MARKS].sort((a, b) => dist(a[0], a[1], this.x, this.y) - dist(b[0], b[1], this.x, this.y));
     const mark = marks.find((m) => dist(m[0], m[1], p.x, p.y) > 80) ?? marks[0];
-    for (const c of this.clones) if (c.live) [c.tx, c.ty] = this.pickSpot();
+    for (const c of this.clones) if (c.live) [c.tx, c.ty] = this.pickSpot(FLOAT[c.zone]);
     this.anim = 'cast';
-    yield* this.glideTo(mark[0], mark[1], 170, 1.6);
+    if (st) st.table.holds++;
+    try {
+      yield* this.glideTo(mark[0], mark[1], 170, 2.4);
+      const until = this.clock + 1.5;
+      while (st && !st.table.locked && this.clock < until) yield;
+      yield* this.laserShots(count);
+    } finally {
+      if (st) st.table.holds = Math.max(0, st.table.holds - 1);
+      this.laser = null;
+    }
+  }
+
+  /** The shots themselves, from where she stands (the turntable is locked). */
+  private *laserShots(count: number): Script {
+    const w = this.w;
     for (let i = 0; i < count; i++) {
       const sweep = i === count - 1 && (this.phase >= 2 || this.hp < this.maxHp * 0.45);
       const t = w.target();
@@ -522,7 +617,7 @@ export class Lux extends Boss implements StageListener {
   private *encoreRoutine(): Script {
     const w = this.w;
     this.anim = 'cast';
-    yield* this.glideTo(STAGE_CENTRE.x, STAGE_CENTRE.y, 150, 2.5);
+    yield* this.glideTo(ENCORE_POS.x, ENCORE_POS.y, 150, 4);
     this.encore = true;
     this.poise = 0;
     w.fx.label(this.x, this.y - 66, '安可 · 每秒回复 2%', P.rose, 1.4);
@@ -656,11 +751,11 @@ export class Lux extends Boss implements StageListener {
 export const luxDef: BossDef = {
   id: 'lux',
   arena: club,
-  spawn: { x: 320, y: 110 },
-  make: (w, tier) => new Lux(w, tier, 320, 110),
+  spawn: { x: MARKS[2][0], y: MARKS[2][1] },
+  make: (w, tier) => new Lux(w, tier, MARKS[2][0], MARKS[2][1]),
   drop: 'legs_blink',
   portrait: { key: 'lux_portrait', frame: 'lux' },
-  hint: '拉配电箱断电 · 打坏投影仪 · E 转镜子反射激光 · 追光里伤害 +25%',
+  hint: '两头配电箱都能全场断电 · 打坏投影仪 · E 转镜子反射激光 · E 打碟台反转转盘 · 追光 +25%',
   music: {
     bpm: 120,
     kick: 'x...x...x...x...',

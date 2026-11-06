@@ -2,17 +2,19 @@
  * Madame Lux + Neon Bazaar club art (palette indices only).
  *   lux           40x56  idle1, idle2, cast, kiss, hurt  (3/4 view facing right, origin bottom centre;
  *                        floating hologram idol: magenta bob, white sequin gown, cyan boa, no feet)
- *   lux_dev       32x48  breaker_on/off, projector_on/off, mirror_0..3 (ground point at row 38,
- *                        drawn at y + 10). Mirror k = plane at k * 45 deg (y foreshortened x0.5).
+ *   lux_dev       32x48  breaker_on/off, projector_on/off, mirror_0..3, dj_on/off (ground point at
+ *                        row 38, drawn at y + 10). Mirror k = plane at k * 45 deg (y foreshortened x0.5).
  *   lux_portrait  64x64  'lux'
- *   bg_club       640x360 club floor, dance floor glass, stage lip, walls with neon signs.
+ *   bg_club       1280x360 the whole scrolling club: bar zone (parquet, counter, booths, back bar),
+ *                        dance floor (stage strip, turntable base), glass partition, VIP carpet and
+ *                        couches, walls from `clubMask`, neon signs.
  */
 import { C, RAMP } from './palette';
 import { PixBuf, type Pt } from './core/pixbuf';
 import { hash2 } from './core/rng';
 import type { SheetSpec } from './core/sheet';
 import { mat, part } from './actors/rig';
-import { FLOOR, MARKS, NEON } from '../game/arenas/club';
+import { BOOTH_COLS, clubMask, COUCHES, COUNTER, GLASS, glassSpans, MAP, MARKS, NEON, STAGE_STRIP, TABLE, VIP_START, WEST_END, type LowCover } from '../game/arenas/club';
 import { P } from '../engine/gfx';
 
 // ------------------------------------------------------------------ Lux sprite
@@ -184,6 +186,24 @@ function mirror(k: number): PixBuf {
   });
 }
 
+function djConsole(on: boolean): PixBuf {
+  return deviceFrame((b) => {
+    // desk: top surface + front panel
+    b.rect(2, 22, 28, 8, C.slate);
+    b.hline(2, 29, 22, C.fog);
+    b.rect(2, 30, 28, G - 30, C.navy);
+    b.hline(2, 29, 30, C.ink);
+    for (let x = 4; x < 29; x += 6) b.vline(x, 31, G - 1, C.night);
+    // two platters and the mixer
+    for (const cx of [9, 23]) { b.ellipse(cx, 26, 5, 2.5, C.ink); b.ellipse(cx, 26, 4, 1.8, on ? C.grape : C.night); b.set(cx, 26, C.fog); }
+    b.rect(14, 23, 4, 5, C.ink);
+    b.set(15, 24, on ? C.acid : C.red); b.set(16, 26, on ? C.amber : C.slate);
+    // neon trim on the front
+    b.hline(3, 28, 34, on ? C.magenta : C.grape);
+    b.hline(3, 28, 35, on ? C.rose : C.plum);
+  });
+}
+
 // ------------------------------------------------------------------ portrait (64x64)
 function portrait(): PixBuf {
   const b = new PixBuf(64, 64);
@@ -221,7 +241,7 @@ function portrait(): PixBuf {
   return b;
 }
 
-// ------------------------------------------------------------------ background (640x360)
+// ------------------------------------------------------------------ background (1280x360)
 function neonLine(b: PixBuf, x0: number, y0: number, x1: number, y1: number, core: number, edge: number): void {
   b.line(x0, y0 + 1, x1, y1 + 1, edge);
   b.line(x0, y0, x1, y1, core);
@@ -238,6 +258,9 @@ const GLYPHS: Record<string, string[]> = {
   L: ['x...', 'x...', 'x...', 'x...', 'x...', 'xxxx'],
   U: ['x..x', 'x..x', 'x..x', 'x..x', 'x..x', '.xx.'],
   X: ['x..x', 'x..x', '.xx.', '.xx.', 'x..x', 'x..x'],
+  V: ['x..x', 'x..x', 'x..x', 'x..x', '.xx.', '.xx.'],
+  I: ['xxx.', '.x..', '.x..', '.x..', '.x..', 'xxx.'],
+  P: ['xxx.', 'x..x', 'x..x', 'xxx.', 'x...', 'x...'],
 };
 
 function neonText(b: PixBuf, text: string, x: number, y: number, s: number, core: number, edge: number): void {
@@ -253,34 +276,64 @@ function neonText(b: PixBuf, text: string, x: number, y: number, s: number, core
   }
 }
 
+function couch(b: PixBuf, c: LowCover): void {
+  const { x, y, w, h, top } = c;
+  // backrest, then the seat in front of it
+  b.rect(x, y - top, w, top - 2, C.grape);
+  b.hline(x, x + w - 1, y - top, C.orchid);
+  for (let i = x + 6; i < x + w - 2; i += 12) b.vline(i, y - top + 2, y - 4, C.plum);
+  b.rect(x, y - 2, w, h + 2, C.orchid);
+  b.hline(x, x + w - 1, y - 2, C.pale);
+  for (let i = x + 4; i < x + w - 2; i += 8) b.set(i, y + 2, C.grape);
+  b.hline(x, x + w - 1, y + h - 1, C.grape);
+  b.strokeRect(x - 1, y - top - 1, w + 2, top + h + 2, C.ink);
+  for (let i = x; i < x + w; i++) if (i % 2 === 0) b.set(i, y + h + 1, C.ink);
+}
+
 function club(): PixBuf {
-  const b = new PixBuf(640, 360);
-  // floor: dark lacquered tiles with neon reflections
-  for (let y = 0; y < 360; y++) for (let x = 0; x < 640; x++) {
-    const tx = x >> 5, ty = y >> 5;
-    let c: number = C.night;
+  const W = MAP.w, H = MAP.h;
+  const b = new PixBuf(W, H);
+  // ---- floors: bar parquet (west), lacquer tiles (dance floor), VIP carpet
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
     const h = hash2(x, y, 31);
-    if ((tx + ty) % 2 && h < 0.18) c = C.navy;
-    else if (h < 0.015) c = C.indigo;
-    else if (h < 0.02) c = C.plum;
-    if (x % 32 === 0 || y % 32 === 0) c = C.ink;
-    else if (x % 32 === 1 || y % 32 === 1) c = (tx + ty) % 2 ? C.navy : C.night;
+    let c: number = C.night;
+    if (x < WEST_END) {
+      const row = y >> 3, joint = (x + row * 37) % 48;
+      c = row % 2 ? C.umber : C.night;
+      if (h < 0.05) c = C.umber;
+      if (y % 8 === 0 || joint === 0) c = C.ink;
+    } else if (x >= VIP_START) {
+      const u = (x + y) % 24, v = (x - y + 960) % 24;
+      c = C.plum;
+      if (u === 0 || v === 0) c = C.grape;
+      else if (h < 0.04) c = C.maroon;
+    } else {
+      const tx = x >> 5, ty = y >> 5;
+      if ((tx + ty) % 2 && h < 0.18) c = C.navy;
+      else if (h < 0.015) c = C.indigo;
+      else if (h < 0.02) c = C.plum;
+      if (x % 32 === 0 || y % 32 === 0) c = C.ink;
+      else if (x % 32 === 1 || y % 32 === 1) c = (tx + ty) % 2 ? C.navy : C.night;
+    }
     b.set(x, y, c);
   }
-  // reflections of the wall neon on the floor (vertical streaks)
+  // brass trim between the bar and the dance floor
+  for (let y = 48; y < 336; y++) { b.set(WEST_END, y, y % 4 ? C.rust : C.sodium); b.set(WEST_END + 1, y, C.ink); }
+  // reflections of the top-wall neon on the floor (vertical streaks)
   for (const n of NEON) {
-    if (n.y > 100) continue;
+    if (n.y > 100 || n.x < WEST_END || n.x >= VIP_START) continue;
     const col = n.c === P.cyan ? C.teal : C.grape;
     for (let y = 52; y < 120; y++) for (let x = n.x - 18; x <= n.x + 18; x++) {
-      if (hash2(x, y, 41) < 0.12 * (1 - (y - 52) / 70) && x % 32 && y % 32) b.set(x, y, col);
+      if (hash2(x, y, 41) < 0.12 * (1 - (y - 52) / 70) && b.get(x, y) !== C.ink) b.set(x, y, col);
     }
   }
-  // stage runway at the top with a lip of bulbs
-  b.rect(80, 76, 480, 46, C.plum);
-  for (let y = 76; y < 122; y++) for (let x = 80; x < 560; x++) if (hash2(x, y, 51) < 0.05) b.set(x, y, C.grape);
-  b.hline(80, 559, 121, C.ink);
-  b.hline(80, 559, 120, C.grape);
-  for (let x = 84; x < 560; x += 8) { b.set(x, 119, C.amber); b.set(x + 1, 119, C.sodium); }
+  // ---- stage strip with a lip of bulbs
+  const S = STAGE_STRIP;
+  b.rect(S.x, S.y, S.w, S.h, C.plum);
+  for (let y = S.y; y < S.y + S.h; y++) for (let x = S.x; x < S.x + S.w; x++) if (hash2(x, y, 51) < 0.05) b.set(x, y, C.grape);
+  b.hline(S.x, S.x + S.w - 1, S.y + S.h, C.ink);
+  b.hline(S.x, S.x + S.w - 1, S.y + S.h - 1, C.grape);
+  for (let x = S.x + 4; x < S.x + S.w; x += 8) { b.set(x, S.y + S.h - 2, C.amber); b.set(x + 1, S.y + S.h - 2, C.sodium); }
   // laser marks: 5-point stars
   for (const [mx, my] of MARKS) {
     const pts: Pt[] = [];
@@ -290,35 +343,75 @@ function club(): PixBuf {
     }
     for (let i = 0; i < 10; i++) b.line(pts[i][0], pts[i][1], pts[(i + 1) % 10][0], pts[(i + 1) % 10][1], C.sodium);
   }
-  // dance floor glass
-  const F = FLOOR;
-  b.rect(F.x - 3, F.y - 3, F.cols * F.cw + 6, F.rows * F.ch + 6, C.steel);
-  b.rect(F.x - 2, F.y - 2, F.cols * F.cw + 4, F.rows * F.ch + 4, C.ink);
-  for (let r = 0; r < F.rows; r++) for (let c = 0; c < F.cols; c++) {
-    const x = F.x + c * F.cw, y = F.y + r * F.ch;
-    b.rect(x + 1, y + 1, F.cw - 2, F.ch - 2, (c + r) % 2 ? C.navy : C.indigo);
-    b.hline(x + 1, x + F.cw - 2, y + 1, C.slate);
-    b.vline(x + 1, y + 1, y + F.ch - 2, C.slate);
-    b.hline(x + 2, x + F.cw - 2, y + F.ch - 2, C.night);
-    for (let i = 0; i < 4; i++) b.set(x + 4 + i * 6, y + 4 + ((i * 5) % (F.ch - 8)), (c + r) % 2 ? C.abyss : C.grape);
-  }
-  for (let x = F.x - 3; x < F.x + F.cols * F.cw + 3; x += 6) { b.set(x, F.y - 3, C.amber); b.set(x, F.y + F.rows * F.ch + 2, C.amber); }
+  // ---- turntable base (the rotating sector lines are drawn at runtime)
+  const T = TABLE;
+  b.circle(T.x, T.y + 2, T.r + 4, C.ink);
+  b.circle(T.x, T.y, T.r + 3, C.steel);
+  b.circle(T.x, T.y, T.r + 1, C.ink);
+  for (let i = 2; i >= 0; i--) b.circle(T.x, T.y, T.rings[i + 1] - 1, i % 2 ? C.navy : C.night);
+  for (const r of [T.rings[1], T.rings[2]]) b.ring(T.x, T.y, r, C.slate);
+  for (let i = 0; i < 48; i++) { const a = (i / 48) * Math.PI * 2; b.set(Math.round(T.x + Math.cos(a) * (T.r + 2)), Math.round(T.y + Math.sin(a) * (T.r + 2)), C.amber); }
+  b.circle(T.x, T.y, 5, C.slate); b.circle(T.x, T.y, 2, C.fog);
 
-  // ---- walls
-  // top: truss band (0..31) + wall face (32..47)
-  b.rect(0, 0, 640, 32, C.ink);
-  for (let x = 0; x < 640; x++) for (let y = 0; y < 32; y++) if (hash2(x, y, 61) < 0.06) b.set(x, y, C.night);
-  b.hline(0, 639, 22, C.slate); b.hline(0, 639, 28, C.slate);
-  for (let x = 0; x < 640; x += 8) b.line(x, 22, x + 6, 28, C.navy);
-  for (let x = 40; x < 640; x += 64) { b.rect(x, 24, 8, 6, C.steel); b.rect(x + 2, 29, 4, 2, C.amber); }
-  b.rect(0, 32, 640, 16, C.plum);
-  for (let x = 0; x < 640; x += 20) b.vline(x, 32, 47, C.grape);
-  b.hline(0, 639, 32, C.grape); b.hline(0, 639, 47, C.ink);
-  // floor contact shadow
-  for (let y = 48; y < 52; y++) for (let x = 16; x < 624; x++) if (y < 50 || (x + y) % 2 === 0) b.set(x, y, C.ink);
+  // ---- walls from the shared mask
+  const cols = W / 16, rows = H / 16;
+  const wall = (c: number, r: number) => c < 0 || r < 0 || c >= cols || r >= rows || clubMask(c, r);
+  for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {
+    if (!wall(c, r)) continue;
+    const x0 = c * 16, y0 = r * 16;
+    const face = !wall(c, r + 1);
+    for (let y = y0; y < y0 + 16; y++) for (let x = x0; x < x0 + 16; x++) {
+      let col: number = C.ink;
+      if (face) {
+        col = C.plum;
+        if (x % 20 === 0) col = C.grape;
+        if (y === y0) col = C.grape;
+        if (y === y0 + 15) col = C.ink;
+      } else if (hash2(x, y, 61) < 0.06) col = C.night;
+      b.set(x, y, col);
+    }
+  }
+  // truss band along the top
+  b.hline(0, W - 1, 22, C.slate); b.hline(0, W - 1, 28, C.slate);
+  for (let x = 0; x < W; x += 8) b.line(x, 22, x + 6, 28, C.navy);
+  for (let x = 40; x < W; x += 64) { b.rect(x, 24, 8, 6, C.steel); b.rect(x + 2, 29, 4, 2, C.amber); }
+  // back bar on the west wall face: shelves with bottles and a mirror strip
+  const wf = 80;
+  for (let x = 16; x < WEST_END; x++) {
+    const c = x >> 4;
+    if (BOOTH_COLS.some(([a, z]) => c >= a && c <= z)) continue;
+    for (let y = wf; y < wf + 15; y++) b.set(x, y, y < wf + 6 ? (hash2(x, y, 3) < 0.3 ? C.slate : C.indigo) : C.umber);
+    b.set(x, wf + 6, C.sodium);
+    b.set(x, wf + 14, C.ink);
+    const hb = hash2(x >> 2, 9, 81);
+    if (x % 4 < 2 && hb < 0.7) {
+      const bc = [C.teal, C.lime, C.maroon, C.amber, C.orchid][Math.floor(hash2(x >> 2, 3, 81) * 5)];
+      const bh = 3 + Math.floor(hb * 4);
+      for (let y = wf + 13 - bh; y <= wf + 13; y++) b.set(x, y, bc);
+      b.set(x, wf + 12 - bh, C.pale);
+    }
+  }
+  // booths: velvet floor, a curved bench at the back, side walls
+  for (const [a, z] of BOOTH_COLS) {
+    const x0 = a * 16, x1 = (z + 1) * 16;
+    for (let y = 48; y < 96; y++) for (let x = x0; x < x1; x++) b.set(x, y, (x + y) % 6 === 0 ? C.grape : C.plum);
+    b.rect(x0 + 2, 48, x1 - x0 - 4, 8, C.maroon);
+    b.hline(x0 + 2, x1 - 3, 48, C.rose);
+    b.rect(x0 + 2, 48, 6, 30, C.maroon); b.rect(x1 - 8, 48, 6, 30, C.maroon);
+    b.vline(x0 + 2, 48, 77, C.rose); b.vline(x1 - 3, 48, 77, C.rose);
+    b.hline(x0 + 2, x1 - 3, 56, C.ink);
+    for (const x of [x0, x0 + 1, x1 - 1, x1 - 2]) b.vline(x, 48, 95, C.ink);
+    b.vline(x0 + 1, 48, 95, C.slate); b.vline(x1 - 2, 48, 95, C.slate);
+  }
+  // contact shadow under every wall face
+  for (let x = 16; x < W - 16; x++) {
+    let y = 47;
+    while (y < H && wall(x >> 4, y >> 4)) y++;
+    for (let k = 0; k < 4; k++) if (k < 2 || (x + y + k) % 2 === 0) b.set(x, y + k, C.ink);
+  }
   // side walls with speaker stacks
-  for (const sx of [0, 624]) {
-    b.rect(sx, 32, 16, 328, C.ink);
+  for (const sx of [0, W - 16]) {
+    b.rect(sx, 32, 16, H - 32, C.ink);
     for (let y = 60; y < 330; y += 34) {
       b.rect(sx + 2, y, 12, 30, C.navy);
       b.strokeRect(sx + 2, y, 12, 30, C.slate);
@@ -327,33 +420,62 @@ function club(): PixBuf {
       b.set(sx + 8, y + 21, C.slate);
     }
   }
-  // bottom: bar counter
-  b.rect(0, 336, 640, 24, C.umber);
-  b.hline(0, 639, 336, C.ink); b.hline(0, 639, 337, C.sodium); b.hline(0, 639, 338, C.rust);
-  for (let x = 0; x < 640; x++) for (let y = 340; y < 360; y++) if (hash2(x, y, 71) < 0.08) b.set(x, y, C.rust);
-  for (let i = 0; i < 40; i++) {
-    const x = 24 + Math.floor(hash2(i, 1, 81) * 590), h = 4 + Math.floor(hash2(i, 2, 81) * 5);
-    const col = [C.teal, C.lime, C.maroon, C.amber, C.orchid][Math.floor(hash2(i, 3, 81) * 5)];
-    b.rect(x, 346 - h, 2, h, col); b.set(x, 345 - h, C.pale); b.set(x, 346 - h, C.white);
+  // bottom: front rail
+  b.rect(0, 336, W, 24, C.night);
+  b.hline(0, W - 1, 336, C.ink); b.hline(0, W - 1, 337, C.grape); b.hline(0, W - 1, 338, C.magenta);
+  for (let x = 0; x < W; x += 24) b.rect(x, 340, 3, 20, C.navy);
+
+  // ---- the bar counter (low cover): top surface above its footprint, front panel on it
+  const K = COUNTER, ky = K.y - K.top;
+  b.rect(K.x - 1, ky - 1, K.w + 2, K.top + K.h + 2, C.ink);
+  b.rect(K.x, ky, K.w, K.top, C.rust);
+  b.hline(K.x, K.x + K.w - 1, ky, C.orange);
+  for (let x = K.x; x < K.x + K.w; x++) for (let y = ky + 1; y < K.y - 1; y++) if (hash2(x, y, 71) < 0.12) b.set(x, y, C.umber);
+  b.hline(K.x, K.x + K.w - 1, K.y - 1, C.sodium);
+  b.rect(K.x, K.y, K.w, K.h, C.umber);
+  for (let x = K.x + 8; x < K.x + K.w - 4; x += 34) b.strokeRect(x, K.y + 2, 26, K.h - 4, C.rust);
+  b.hline(K.x, K.x + K.w - 1, K.y + K.h - 1, C.magenta);
+  for (let x = K.x; x < K.x + K.w; x++) if (x % 2 === 0) b.set(x, K.y + K.h + 1, C.ink);
+  // ---- couches (low cover)
+  for (const c of COUCHES) couch(b, c);
+  // ---- glass partition: dithered pane, bright edges, the top edge 16 px above the footprint
+  const GH = 16;
+  for (const [y0, y1] of glassSpans()) {
+    for (let y = Math.max(32, y0 - GH); y < y1; y++) for (let x = GLASS.x; x < GLASS.x + GLASS.w; x++) {
+      if ((x + y) % 2 === 0) b.set(x, y, C.teal);
+      else if ((x + y) % 7 === 0) b.set(x, y, C.ice);
+    }
+    for (let y = Math.max(32, y0 - GH); y < y1; y++) { b.set(GLASS.x, y, C.cyan); b.set(GLASS.x + GLASS.w - 1, y, C.ice); }
+    if (y0 - GH >= 32) b.hline(GLASS.x, GLASS.x + GLASS.w - 1, y0 - GH, C.ice);
+    b.hline(GLASS.x - 1, GLASS.x + GLASS.w, y1 - 1, C.ink);
+    for (let y = y0 + 6; y < y1 - 12; y += 22) b.line(GLASS.x + 1, y + 4, GLASS.x + GLASS.w - 2, y, C.white);
   }
+  // doorway thresholds
+  for (const [d0, d1] of GLASS.doors) for (let y = d0; y < d1; y += 3) { b.set(GLASS.x + 1, y, C.sodium); b.set(GLASS.x + GLASS.w - 2, y, C.sodium); }
+
   // ---- neon signs
-  // heart
-  const hp: Pt[] = [];
-  for (let i = 0; i < 24; i++) {
-    const t = (i / 24) * Math.PI * 2;
-    hp.push([120 + 0.6 * 16 * Math.sin(t) ** 3, 38 - 0.45 * (13 * Math.cos(t) - 5 * Math.cos(2 * t) - 2 * Math.cos(3 * t) - Math.cos(4 * t))]);
-  }
-  neonPoly(b, hp, C.rose, C.magenta);
-  // LUX
-  neonText(b, 'LUX', 292, 34, 2, C.white, C.rose);
-  b.hline(286, 354, 47, C.magenta);
-  // cocktail glass
-  neonPoly(b, [[508, 30], [532, 30], [520, 40]], C.ice, C.cyan);
-  neonLine(b, 520, 40, 520, 45, C.ice, C.cyan);
-  neonLine(b, 514, 46, 526, 46, C.ice, C.cyan);
-  b.set(526, 32, C.acid); b.set(527, 31, C.acid);
+  const heart = (cx: number, cy: number) => {
+    const hp: Pt[] = [];
+    for (let i = 0; i < 24; i++) {
+      const t = (i / 24) * Math.PI * 2;
+      hp.push([cx + 0.6 * 16 * Math.sin(t) ** 3, cy - 0.45 * (13 * Math.cos(t) - 5 * Math.cos(2 * t) - 2 * Math.cos(3 * t) - Math.cos(4 * t))]);
+    }
+    neonPoly(b, hp, C.rose, C.magenta);
+  };
+  heart(470, 38);
+  heart(810, 38);
+  neonText(b, 'LUX', 612, 34, 2, C.white, C.rose);
+  b.hline(606, 674, 47, C.magenta);
+  neonText(b, 'VIP', 1044, 32, 2, C.ice, C.cyan);
+  b.hline(1038, 1106, 47, C.cyan);
+  // cocktail glass over the back bar
+  const gx = 200, gy = 54;
+  neonPoly(b, [[gx - 12, gy], [gx + 12, gy], [gx, gy + 10]], C.ice, C.cyan);
+  neonLine(b, gx, gy + 10, gx, gy + 15, C.ice, C.cyan);
+  neonLine(b, gx - 6, gy + 16, gx + 6, gy + 16, C.ice, C.cyan);
+  b.set(gx + 6, gy + 2, C.acid); b.set(gx + 7, gy + 1, C.acid);
   // side neon strips
-  for (let y = 172; y < 222; y++) { b.set(7, y, C.ice); b.set(8, y, C.cyan); b.set(631, y, C.rose); b.set(632, y, C.magenta); }
+  for (let y = 196; y < 246; y++) { b.set(7, y, C.ice); b.set(8, y, C.cyan); b.set(W - 9, y, C.rose); b.set(W - 8, y, C.magenta); }
   return b;
 }
 
@@ -364,16 +486,18 @@ export function buildLuxArt(): SheetSpec[] {
       frames: (['idle1', 'idle2', 'cast', 'kiss', 'hurt'] as const).map((n) => ({ name: n, buf: luxFrame(POSES[n]) })),
     },
     {
-      key: 'lux_dev', group: 'Props', frameW: 32, frameH: 48, columns: 8,
+      key: 'lux_dev', group: 'Props', frameW: 32, frameH: 48, columns: 10,
       frames: [
         { name: 'breaker_on', buf: breaker(true) },
         { name: 'breaker_off', buf: breaker(false) },
         { name: 'projector_on', buf: projector(true) },
         { name: 'projector_off', buf: projector(false) },
         ...[0, 1, 2, 3].map((k) => ({ name: `mirror_${k}`, buf: mirror(k) })),
+        { name: 'dj_on', buf: djConsole(true) },
+        { name: 'dj_off', buf: djConsole(false) },
       ],
     },
     { key: 'lux_portrait', group: 'Portraits (64x64)', frameW: 64, frameH: 64, frames: [{ name: 'lux', buf: portrait() }] },
-    { key: 'bg_club', group: 'Arenas', frameW: 640, frameH: 360, frames: [{ name: 'bg', buf: club() }] },
+    { key: 'bg_club', group: 'Arenas', frameW: MAP.w, frameH: MAP.h, frames: [{ name: 'bg', buf: club() }] },
   ];
 }
