@@ -53,6 +53,7 @@ const DRY_TILES: Tiles[][] = [
     [36, 52, 3, 4], // conduit pad
     [3, 46, 4, 2], [33, 46, 4, 2], // corner pads under the bulkhead
     [18, 44, 4, 1], // gate stairs
+    [27, 51, 3, 3], [1, 56, 3, 3], // islands: no water more than ~90 px from grating
   ],
   [
     [15, 41, 10, 3], // landing above the gate
@@ -61,11 +62,13 @@ const DRY_TILES: Tiles[][] = [
     [1, 34, 3, 4], // conduit pad
     [35, 36, 3, 3], // right wall pad
     [4, 23, 4, 1], [32, 23, 4, 1], // bulkhead stairs
+    [17, 24, 6, 2], [18, 33, 4, 2], [1, 41, 4, 3], [29, 39, 3, 2], // islands
   ],
   [
     [10, 6, 4, 2], [26, 6, 4, 2], // ledges by the alcove
     [7, 13, 4, 3], [29, 13, 4, 3], // mid pads
     [4, 20, 4, 3], [32, 20, 4, 3], // stair heads
+    [1, 6, 3, 3], [36, 6, 3, 3], [17, 20, 6, 3], // corner islands, bottom-centre landing
   ],
 ];
 
@@ -81,7 +84,7 @@ export const FARM = {
   dry: DRY_TILES.flat().map(rect),
   dryOf: DRY_TILES.map((l) => l.map(rect)),
   /** Indices into `dry` of the conduit pads (hazard stripes in the art). */
-  conduitPads: [3, 12],
+  conduitPads: [3, 14],
   walkway: 1,
   drain: rect([18, 14, 4, 2]),
   /** Pit while the drain is open (the hole inside the grate). */
@@ -735,9 +738,12 @@ export const serverfarm: Arena = {
     }
     // charged water on this level: get onto grating
     const pl = grid.pools[lv];
+    // already on grating while this level is warning or live: hold still until it is over
+    if (pl.state !== 'idle' && !pl.inWater(p.x, p.y)) return { x: p.x, y: p.y, jump: false };
     if (pl.state !== 'idle' && pl.inWater(p.x, p.y)) {
       const d = nearestDry(lv, p.x, p.y, 6);
-      return { ...d, jump: pl.state === 'live' };
+      // far from grating: dash there during the warning too
+      return { ...d, jump: pl.state === 'live' || dist(p.x, p.y, d.x, d.y) > 60 };
     }
     // the target is on another level: take the stairs
     const t = w.nearestEnemy(p.x, p.y, 999);
