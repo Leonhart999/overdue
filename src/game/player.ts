@@ -273,6 +273,11 @@ export class Player {
     const weaponBehind = this.dir === 'up';
     if (weaponBehind) this.weapon.draw(g, w, this, this.y - 0.2);
     g.img('pc_echo', frame, this.x, y, opts);
+    // x-ray: standing behind a big boss, the player shows through as a cyan silhouette
+    const b = w.boss;
+    if (b && !b.defeated && b.y > this.y && b.y - this.y < 95 && Math.abs(b.x - this.x) < 52) {
+      g.img('pc_echo', frame, this.x, y, { layer: 'top', fill: P.cyan, alpha: 0.45, sy: legs });
+    }
     if (!weaponBehind) this.weapon.draw(g, w, this, this.y + 0.2);
     this.legs.draw(g, w, this);
     this.arm.draw(g, w, this);
