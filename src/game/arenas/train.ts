@@ -141,6 +141,8 @@ const GANTRY_WARN = 2.5;
 export const GANTRY_HALF = 12;
 const LIVE_WARN = 2.0;
 const LIVE_DUR = 1.5;
+/** Seconds at the start of a live roof during which it hurts the player. */
+const LIVE_HIT = 0.4;
 const BOX_CD = 10;
 
 const STATES = new WeakMap<World, TrainState>();
@@ -151,8 +153,11 @@ export interface TrainRider {
   x: number;
   y: number;
   readonly onRoof: boolean;
-  shockedByCar(w: World): void;
-  hitByGantry(w: World): void;
+  /** Crouched in a car gap and able to stay down (not staggered/stunned): the gantry passes over. */
+  readonly safeInGap: boolean;
+  /** Return true when the hit actually landed (airborne / invulnerable riders keep the flag unused). */
+  shockedByCar(w: World): boolean;
+  hitByGantry(w: World): boolean;
 }
 
 function shadow(g: Gfx, x: number, y: number, rx: number, ry = rx * 0.4): void {
@@ -183,6 +188,18 @@ export function shotRay(w: World, ox: number, oy: number, dx: number, dy: number
   return t;
 }
 
+/** The first standing cover a ray meets within `max` (null if none). */
+export function firstCoverOnRay(w: World, ox: number, oy: number, dx: number, dy: number, max: number): Cover | null {
+  const st = trainOf(w);
+  let best: Cover | null = null, bt = max;
+  if (st) for (const c of st.covers) {
+    if (c.broken || c.dead) continue;
+    const t = rayRect(ox, oy, dx, dy, c.shotBox);
+    if (t < bt) { bt = t; best = c; }
+  }
+  return best;
+}
+
 /** Roof cover. A wall rect while standing; rubble (no blocking) once broken. (x, y) = footprint centre. */
 export class Cover extends Body {
   hits = 3;
@@ -206,9 +223,11 @@ export class Cover extends Body {
    * Where it stops shots: the footprint raised by the height shots fly at (bullets are drawn
    * 11-24 px above the ground point they are over), so a player standing behind it is covered.
    */
+  private box: Rect | null = null;
+  /** Shot-blocking box (the raised part above the footprint). Cached: the wall never moves. */
   get shotBox(): Rect {
-    const r = this.wall;
-    return { x: r.x, y: r.y - SHOT_LIFT, w: r.w, h: r.h + SHOT_LIFT - 2 };
+    if (!this.box) { const r = this.wall; this.box = { x: r.x, y: r.y - SHOT_LIFT, w: r.w, h: r.h + SHOT_LIFT - 2 }; }
+    return this.box;
   }
   /** A sniper round stopped here. Armour-piercing rounds break it at once. */
   shot(w: World, ap: boolean): void {
@@ -391,9 +410,9 @@ export class Gantry {
           if (r === 'hit') { this.hitPlayer = true; w.fx.label(p.x, p.y - 22, '被龙门架撞到', COL.danger, 0.9); }
         }
         const rd = this.st.rider;
-        if (!this.hitRider && rd && rd.onRoof && this.covers(rd.x, 7) && !gapAt(rd.x, rd.y, 2)) {
-          this.hitRider = true;
-          rd.hitByGantry(w);
+        // in a gap she is only safe while she can stay crouched: staggered or stunned she gets caught
+        if (!this.hitRider && rd && rd.onRoof && this.covers(rd.x, 7) && !(gapAt(rd.x, rd.y, 2) && rd.safeInGap)) {
+          if (rd.hitByGantry(w)) this.hitRider = true;
         }
         if (w.onScreen(this.x, w.bounds.y, -20) && w.rng.chance(dt * 30)) w.fx.sparks(this.x, w.bounds.y + w.rng.next() * w.bounds.h, 2, P.amber, 80);
         if (this.x <= this.endX(w)) {
@@ -413,7 +432,7 @@ export class Gantry {
       const pulse = 0.5 + 0.5 * Math.sin(w.realTime * (eta < 1.2 ? 28 : 14));
       // the safe gaps on screen are outlined
       for (const gp of TRAIN.gaps) {
-        if (gp.x0 < b.x + 2 || gp.x0 > v.x + v.w || gp.x1 < v.x) continue;
+        if (gp.x0 < b.x + 2 || gp.x0 > v.x + v.w || gp.x1 < v.x || this.st.leaving(gp)) continue;
         g.rect(gp.x0, gp.walkY0, gp.x1 - gp.x0, gp.walkY1 - gp.walkY0, P.white, 0.1 + 0.08 * pulse);
         g.strokeRect(gp.x0, gp.walkY0, gp.x1 - gp.x0, gp.walkY1 - gp.walkY0, 1, P.white, 0.7 + 0.3 * pulse);
       }
@@ -448,7 +467,7 @@ export class Gantry {
       g.poly([ax + 8, ay, ax - 4, ay - 9, ax - 4, ay + 9], COL.danger, pulse, 'top');
     }
     if (this.state === 'warn' || (this.state === 'pass' && eta < 99)) {
-      for (const gp of TRAIN.gaps) if (gp.x0 >= b.x + 2 && w.onScreen(gp.cx, gp.walkY0, -10)) g.text('安全', gp.cx, gp.walkY0 - 12, { layer: 'top', color: P.white, align: 'center', stroke: true, overDark: true });
+      for (const gp of TRAIN.gaps) if (gp.x0 >= b.x + 2 && !this.st.leaving(gp) && w.onScreen(gp.cx, gp.walkY0, -10)) g.text('安全', gp.cx, gp.walkY0 - 12, { layer: 'top', color: P.white, align: 'center', stroke: true, overDark: true });
     }
     if (this.state === 'pass' && w.onScreen(this.x, b.y + 40, -40)) {
       g.img('train_gantry', 'beam', this.x, b.y + b.h + TRAIN.side + 20, { layer: 'top' });
@@ -540,18 +559,21 @@ export class TrainState {
       l.on -= dt;
       if (w.onScreen(car.cx, w.bounds.y, -200) && w.rng.chance(dt * 40)) w.fx.sparks(car.x0 + w.rng.next() * (car.x1 - car.x0), w.bounds.y + w.rng.next() * w.bounds.h, 2, COL.shock, 60);
       const onCar = (x: number) => x >= car.x0 && x < car.x1;
-      if (!l.hitPlayer && onCar(p.x) && !p.airborne && w.state === 'fight') {
+      // the player is hit only by the discharge at the start (a timed jump clears it); the roof
+      // then crackles for the rest of LIVE_DUR and still catches Vesper if she lands on it
+      if (!l.hitPlayer && LIVE_DUR - l.on < LIVE_HIT && onCar(p.x) && !p.airborne && w.state === 'fight') {
         if (w.hitPlayer(1, { x: p.x, y: p.y, low: true, kind: 'shock', perfectable: false }) === 'hit') l.hitPlayer = true;
       }
       const rd = this.rider;
-      if (!l.hitRider && rd && rd.onRoof && onCar(rd.x)) { l.hitRider = true; rd.shockedByCar(w); }
+      if (!l.hitRider && rd && rd.onRoof && onCar(rd.x) && rd.shockedByCar(w)) l.hitRider = true;
     }
   }
 
   // ------------------------------------------------------------------ uncoupling
   private playerOnRear(w: World): boolean {
-    const c = TRAIN.cars[this.rear];
-    return w.player.x < c.x1 + TRAIN.gapW;
+    // same test as the fall in detach(): any part of the player's ground circle behind the next car
+    const next = TRAIN.cars[this.rear + 1];
+    return !!next && w.player.x < next.x0 + w.player.r;
   }
 
   private updateUncouple(w: World, dt: number): void {
@@ -596,6 +618,9 @@ export class TrainState {
     }
   }
 
+  /** True for the gap that goes with the rear car when it is about to detach (not a safe spot). */
+  leaving(gp: Gap): boolean { return this.detachT >= 0 && gp.i === this.rear; }
+
   /** The rear car (and the gap in front of it) falls behind. */
   detach(w: World): void {
     const car = TRAIN.cars[this.rear];
@@ -620,7 +645,7 @@ export class TrainState {
     w.fx.shake(3, 0.2);
     // anyone still on it is thrown onto the next car
     const p = w.player;
-    if (p.x < left + 2 && w.state === 'fight') {
+    if (p.x < left + p.r && w.state === 'fight') {
       // a leap over the leaving car does not save you: you are still on it when it goes
       p.airborne = false;
       p.z = 0;
@@ -716,10 +741,10 @@ export class TrainState {
         const s = h.shape;
         if (s.k === 'circle' || s.k === 'sector') { if (on(s.x, s.y, s.r + 20)) holes.push({ x: s.x, y: s.y, r: s.r + 12 }); }
         else if (s.k === 'line') {
-          const n = Math.max(1, Math.ceil(dist(s.x1, s.y1, s.x2, s.y2) / 18));
+          const n = Math.max(1, Math.ceil(dist(s.x1, s.y1, s.x2, s.y2) / 40));
           for (let i = 0; i <= n; i++) {
             const x = s.x1 + ((s.x2 - s.x1) * i) / n, y = s.y1 + ((s.y2 - s.y1) * i) / n;
-            if (on(x, y, 24)) holes.push({ x, y, r: 20 });
+            if (on(x, y, 30)) holes.push({ x, y, r: 26 });
           }
         }
       }
@@ -729,6 +754,8 @@ export class TrainState {
         holes.push({ x: v.x + v.w / 2 - 60, y: b.y - 18, r: 40 }, { x: v.x + v.w / 2 + 60, y: b.y - 18, r: 40 }, { x: v.x + v.w - 14, y: b.y + b.h / 2, r: 18 });
         for (const gp of TRAIN.gaps) if (gp.x0 >= b.x + 2) for (let y = gp.walkY0; y <= gp.walkY1; y += 30) if (on(gp.cx, y, 30)) holes.push({ x: gp.cx, y, r: 24 });
       }
+      // keep the erase count bounded (the player's own light hole comes first and always stays)
+      if (holes.length > 90) holes.length = 90;
       g.darkness(0.9 * clamp(this.dark, 0, 1), holes);
     }
     this.holes.length = 0;

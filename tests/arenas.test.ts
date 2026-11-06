@@ -106,3 +106,17 @@ describe('arena interactions', () => {
     expect(shots).toBeGreaterThan(5);
   });
 });
+
+describe('vesper', () => {
+  it('a live-roof shock that crosses a phase threshold still starts the uncoupling', async () => {
+    const { trainOf } = await import('../src/game/arenas/train');
+    const { w, run } = fight('vesper');
+    const b = w.boss!;
+    run(1);
+    b.hp = b.maxHp * 0.65 + 50; // the 140-damage shock crosses 65%
+    (b as unknown as { shockedByCar(w: World): boolean }).shockedByCar(w);
+    run(4);
+    expect(b.phase).toBe(1);
+    expect(trainOf(w)!.uncouple).toBe(true);
+  });
+});

@@ -24,19 +24,21 @@
  * or junction box: x1.5.
  */
 import { COL, P, type Gfx } from '../../engine/gfx';
-import { angleDiff, angleTo, clamp, dist, norm } from '../../engine/math';
+import { angleDiff, angleTo, clamp, dist, norm, pointInRect } from '../../engine/math';
 import type { Script } from '../../engine/script';
 import { Body } from '../body';
-import { Boss, BossPart, type HitTag } from '../boss';
+import { Boss, BossPart, JAM_SLOW, type HitTag } from '../boss';
 import { Bullet } from '../bullet';
 import { Hazard } from '../hazard';
-import { carIndexAt, coverAt, gapAt, isClearingShot, isConductor, shotRay, keepOffDrops, LAST_CARS, train, TRAIN, trainOf, type Gap, type TrainRider, type TrainState } from '../arenas/train';
+import { carIndexAt, coverAt, gapAt, isClearingShot, isConductor, shotRay, firstCoverOnRay, keepOffDrops, LAST_CARS, train, TRAIN, trainOf, type Gap, type TrainRider, type TrainState } from '../arenas/train';
 import { shapeHits, type Hit } from '../types';
 import type { World } from '../world';
 import type { BossDef } from './registry';
 
 type Anim = 'idle1' | 'idle2' | 'aim' | 'fire' | 'kick' | 'hurt' | 'leap' | 'crouch';
 
+/** Seconds she needs to get from anywhere on a car into a gap (leap or walk). */
+const GAP_TRAVEL = 1.3;
 const BASE_HP = 2250;
 /** Rifle pivot height above the ground point. */
 const GUN_H = 24;
@@ -55,6 +57,8 @@ interface Laser {
   ap: boolean;
   ex: number;
   ey: number;
+  /** Wobble frozen at lock time. */
+  lockWob?: number;
 }
 
 // =====================================================================================
@@ -92,6 +96,21 @@ class SniperRound extends Bullet {
       }
     }
     super.collide(w);
+  }
+  onWall(w: World): void {
+    const st = trainOf(w);
+    const c = st ? st.covers.find((k) => !k.broken && !k.dead && pointInRect(this.x, this.y, k.wall)) : undefined;
+    if (!c) { super.onWall(w); return; }
+    if (this.team === 'enemy' && this.ap && !this.pierced) {
+      // armour-piercing: break it and carry on (step past the footprint)
+      this.pierced = true;
+      c.shot(w, true);
+      w.fx.sparks(this.x, this.y, 8, P.amber, 140);
+      return;
+    }
+    if (this.team === 'enemy') c.shot(w, false);
+    this.dead = true;
+    w.fx.sparks(this.x, this.y, 4, this.team === 'enemy' ? P.red : P.cyan, 80);
   }
 }
 
@@ -155,6 +174,8 @@ export class VesperMine extends Body {
     const on = Math.floor(w.realTime * (fast ? 14 : 3)) % 2 === 0;
     g.img('vesper_fx', on ? 'mine_a' : 'mine_b', this.x, this.y + 3, { layer: 'floor' });
     g.circle(this.x, this.y - 2, on ? 6 : 3, P.red, on ? 0.5 : 0.2, 'light');
+    // the fuse warning sits above her smoke so it is never hidden
+    if (fast) g.ring(this.x, this.y, this.R + 2, 2, P.red, 0.6 + 0.4 * (on ? 1 : 0), 'top');
   }
 }
 
@@ -240,8 +261,12 @@ export class Vesper extends Boss implements TrainRider {
   private eta(): number { const st = this.st; return st ? st.gantry.etaAt(this.w, this.x) : Infinity; }
 
   // ------------------------------------------------------------------ train hooks
-  hitByGantry(w: World): void {
-    if (this.invuln) return;
+  /** Train hook: safe in a gap only while able to stay down. */
+  get safeInGap(): boolean { return !this.staggered && this.stunT <= 0 && !this.airborne; }
+
+  hitByGantry(w: World): boolean {
+    // during a phase transition she cannot act, so the gantry does not get her for free
+    if (this.invuln || this.airborne || this.inTransition) return false;
     w.fx.label(this.x, this.y - 60, '被龙门架撞到', P.amber, 1.2);
     w.fx.shake(8, 0.4);
     w.hitstop = Math.max(w.hitstop, 0.1);
@@ -249,16 +274,20 @@ export class Vesper extends Boss implements TrainRider {
     w.sfx('crash');
     this.kvx = -280;
     w.damage(this.body, { dmg: 360, kind: 'crush', x: this.x, y: this.y - 20, dx: -1, dy: 0, poise: 999, from: 'env', src: 'gantry' });
+    return true;
   }
 
-  shockedByCar(w: World): void {
-    if (this.airborne || this.invuln) return;
+  shockedByCar(w: World): boolean {
+    if (this.airborne || this.invuln) return false;
+    const phase = this.phase;
     w.damage(this.body, { dmg: 140, kind: 'shock', x: this.x, y: this.y - 20, poise: 30, from: 'env', src: 'catenary' });
     w.fx.sparks(this.x, this.y - 20, 14, P.ice, 140);
-    if (!this.staggered && !this.inTransition && !this.dying) {
+    // if that hit started a phase change, its transition owns the script now: no stun over it
+    if (this.phase === phase && !this.staggered && !this.inTransition && !this.dying) {
       w.fx.label(this.x, this.y - 56, '麻痹', P.ice, 0.9);
       this.setScript(this.stunned(1.2));
     }
+    return true;
   }
 
   mineGone(m: VesperMine): void { this.mines = this.mines.filter((x) => x !== m); }
@@ -309,11 +338,16 @@ export class Vesper extends Boss implements TrainRider {
     this.dt = dt;
     this.animClock += dt;
     if (this.kickCd > 0) this.kickCd -= dt;
-    if (this.wobbleT > 0) this.wobbleT -= dt;
+    // the hack lasts 4 s of real fight time, not of her jam-slowed clock
+    if (this.wobbleT > 0) this.wobbleT -= this.jamT > 0 ? dt / JAM_SLOW : dt;
     if (this.muzzleT > 0) this.muzzleT -= dt;
     if (this.stunT > 0) this.stunT -= dt;
     if (this.mines.some((m) => m.dead)) this.mines = this.mines.filter((m) => !m.dead);
     const st = this.st;
+    if (st && !this.dying) {
+      if (this.phase >= 1 && !st.uncouple) { st.uncouple = true; st.uncoupleEvery = 14; }
+      if (this.phase >= 2 && st.uncoupleEvery !== 8) { st.uncoupleEvery = 8; st.gantry.interval = 14; }
+    }
     if (st && this.phase >= 2 && !st.tunnel && st.carsLeft <= LAST_CARS && !this.dying) {
       st.tunnel = true;
       w.fx.label(w.player.x, w.bounds.y + 30, '列车进入隧道', P.pale, 1.6);
@@ -384,7 +418,7 @@ export class Vesper extends Boss implements TrainRider {
     return Math.sin(this.clock * 11) * 0.16 + Math.sin(this.clock * 4.3) * 0.09;
   }
   /** Aim angle actually used (wobble included). */
-  private aimOf(L: Laser): number { return L.a + this.wobble(); }
+  private aimOf(L: Laser): number { return L.a + (L.locked ? L.lockWob ?? 0 : this.wobble()); }
 
   private newLaser(ap: boolean, dur: number, off = 0): Laser {
     const [mx, my] = this.pivot();
@@ -392,6 +426,7 @@ export class Vesper extends Boss implements TrainRider {
     const a = angleTo(mx, my, t.hx, t.hy) + off;
     const haz = this.hazard({ k: 'line', x1: mx, y1: my, x2: mx, y2: my, w: ap ? 18 : 14 }, dur + 1, 0, (h) => {
       h.hitsPlayer = false;
+      h.marker = true;
       h.color = ap ? P.orange : COL.danger;
     });
     const L: Laser = { a, off, haz, locked: false, ap, ex: mx, ey: my };
@@ -404,7 +439,12 @@ export class Vesper extends Boss implements TrainRider {
     const a = this.aimOf(L);
     const [mx, my] = this.muzzle(a);
     const dx = Math.cos(a), dy = Math.sin(a);
-    const len = shotRay(this.w, mx, my, dx, dy, 900);
+    // an armour-piercing round goes through the first cover: the line shows that
+    let len = shotRay(this.w, mx, my, dx, dy, 900);
+    if (L.ap) {
+      const first = firstCoverOnRay(this.w, mx, my, dx, dy, len + 1);
+      if (first) len = shotRay(this.w, mx, my, dx, dy, 900, first);
+    }
     L.ex = mx + dx * len; L.ey = my + dy * len;
     const s = L.haz.shape;
     if (s.k === 'line') { s.x1 = mx; s.y1 = my; s.x2 = L.ex; s.y2 = L.ey; }
@@ -426,6 +466,7 @@ export class Vesper extends Boss implements TrainRider {
   }
 
   private lockLaser(L: Laser): void {
+    L.lockWob = this.wobble();
     L.locked = true;
     L.haz.color = P.white;
     this.w.sfx('telegraph', 0.8, L.ap ? 0.8 : 1.5);
@@ -568,7 +609,10 @@ export class Vesper extends Boss implements TrainRider {
     yield* this.wait(0.6);
     for (;;) {
       const eta = this.eta();
-      if (eta < 2.9) { yield* this.toGap(); continue; }
+      // time an attack needs plus the walk back to a gap (pace, optics and loans included)
+      const after = this.t(0.35) + 0.3 + GAP_TRAVEL;
+      const fits = (attack: number) => eta > this.t(attack) + after;
+      if (eta < this.t(0.5) + GAP_TRAVEL) { yield* this.toGap(); continue; }
       const p = w.player;
       const d = this.distToTarget();
       const ph = this.phase;
@@ -579,11 +623,11 @@ export class Vesper extends Boss implements TrainRider {
       const carL = TRAIN.carLen + TRAIN.gapW;
       const reposition = !chase && (this.x < this.doomedX() || this.blockedT > 3 || dx > 2.2 * carL || (this.spotT > 14 && dx > carL));
       const opts: [string, number][] = [
-        ['relocate', chase && eta > 2.2 ? 12 : 0],
-        ['reposition', reposition && eta > 2.2 ? (this.x < this.doomedX() ? 50 : 6) : 0],
-        ['snipe', eta > 3.2 ? 4 : 0],
-        ['volley', ph >= 1 && eta > 4.6 ? 2.5 : 0],
-        ['ap', ph >= 1 && eta > 3.8 ? (this.blockedT > 0.5 ? 5 : 1.2) : 0],
+        ['relocate', chase && fits(0.9) ? 12 : 0],
+        ['reposition', reposition && fits(0.9) ? (this.x < this.doomedX() ? 50 : 6) : 0],
+        ['snipe', fits(1.45) ? 4 : 0],
+        ['volley', ph >= 1 && fits(2.8) ? 2.5 : 0],
+        ['ap', ph >= 1 && fits(1.75) ? (this.blockedT > 0.5 ? 5 : 1.2) : 0],
       ];
       if (opts.every((o) => o[1] <= 0)) { yield* this.wait(0.1); continue; }
       for (const o of opts) if (o[0] === this.lastPick && o[0] !== 'relocate' && o[0] !== 'reposition') o[1] *= 0.5;
@@ -731,7 +775,8 @@ export class Vesper extends Boss implements TrainRider {
     w.objects.push(new Smoke(this.x, this.y - 2, ph >= 1 ? 30 : 24, 3.4, w));
     w.sfx('pop', 0.8, 0.6);
     w.fx.smoke(this.x, this.y, 6, P.slate, 5, 16);
-    if (ph >= 1 && this.mines.length < MAX_MINES) {
+    // no mines in a car gap: that is the player's safe spot from the gantry
+    if (ph >= 1 && this.mines.length < MAX_MINES && !gapAt(this.x, this.y, 8)) {
       const m = w.add(new VesperMine(this, this.x, this.y));
       this.mines.push(m);
     }
@@ -745,7 +790,8 @@ export class Vesper extends Boss implements TrainRider {
   /** Gantry coming: get into a car gap and stay down until it has passed. */
   private *toGap(): Script {
     const w = this.w;
-    const gp = this.chooseGap();
+    const here = TRAIN.gaps.find((g) => this.x >= g.x0 && this.x <= g.x1 && !(this.st?.leaving(g) ?? false));
+    const gp = here ?? this.chooseGap();
     if (!gp) { yield* this.wait(0.3); return; }
     const ty = clamp(this.y, gp.walkY0 + 12, gp.walkY1 - 12);
     if (!gapAt(this.x, this.y, 3)) {

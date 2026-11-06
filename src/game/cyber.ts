@@ -371,7 +371,7 @@ class GrappleArm extends Arm {
           return;
         }
       }
-      if (this.travelled > 190 * p.rangeMul) { this.st = 'retract'; return; }
+      if (this.travelled > 250 * p.rangeMul) { this.st = 'retract'; return; }
     }
   }
 
