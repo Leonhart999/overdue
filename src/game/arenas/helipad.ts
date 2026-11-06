@@ -814,23 +814,9 @@ function setup(w: World): void {
 
 /** Fell through a rail gap: 1 heart, winched back to the rail. */
 function winch(w: World, left: boolean): void {
-  const p = w.player, b = w.bounds;
-  p.forced = null;
-  p.legs.active = false;
-  p.iframes = 0;
-  if (p.invuln > 0) { // already hit this moment (bash knockback): no second heart for the fall
-    p.x = left ? b.x + 60 : b.x + b.w - 60; p.y = (PAD.gap.y0 + PAD.gap.y1) / 2; p.vx = p.vy = 0;
-    p.invuln = Math.max(p.invuln, 1.5);
-    return;
-  }
-  const gy = (PAD.gap.y0 + PAD.gap.y1) / 2;
-  const x = left ? b.x + 60 : b.x + b.w - 60;
-  w.fx.label(p.x, p.y - 20, '坠落', COL.danger, 0.8);
-  w.hitPlayer(1, { kind: 'fall', x: p.x, y: p.y });
-  p.x = x; p.y = gy; p.vx = p.vy = 0;
-  p.invuln = Math.max(p.invuln, 1.5);
-  w.fx.label(x, gy - 24, '绞盘拉回', P.fog, 1);
-  w.fx.burst(x, gy - 9, 8, P.pale, 60, 0.3, 1);
+  const b = w.bounds;
+  const to = { x: left ? b.x + 60 : b.x + b.w - 60, y: (PAD.gap.y0 + PAD.gap.y1) / 2 };
+  w.fallPlayer(to, { label: '坠落', arrive: '绞盘拉回' });
   w.sfx('grapple');
 }
 

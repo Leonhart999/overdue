@@ -693,19 +693,8 @@ export function onSegment<B extends Body>(w: World, x1: number, y1: number, x2: 
 /** Fell into deep water or the open drain: 1 heart, back on the nearest dry grating of `level`. */
 function fall(w: World, level: number, text: string): void {
   const p = w.player;
-  p.forced = null;
-  p.legs.active = false;
-  p.iframes = 0;
-  const to = nearestDry(level, p.x, p.y);
-  if (p.invuln <= 0) {
-    w.fx.label(p.x, p.y - 20, text, COL.danger, 0.8);
-    w.hitPlayer(1, { kind: 'fall', x: p.x, y: p.y });
-  }
-  w.fx.burst(p.x, p.y - 4, 12, P.teal, 80, 0.4, 2);
   w.sfx('spray', 0.8, 0.6);
-  p.x = to.x; p.y = to.y; p.vx = p.vy = 0;
-  p.invuln = Math.max(p.invuln, 1.5);
-  w.fx.burst(to.x, to.y - 9, 8, P.pale, 60, 0.3, 1);
+  w.fallPlayer(nearestDry(level, p.x, p.y), { label: text, color: P.teal });
 }
 
 export const serverfarm: Arena = {

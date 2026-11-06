@@ -420,6 +420,28 @@ export class World {
     return dealt;
   }
 
+  /**
+   * The player fell off the map (pit, deep water, rail gap, detached car): costs 1 heart unless
+   * they were already hit this moment (never 2 hearts for one fall), cancels forced moves and the
+   * legs move, puts them at `to` and gives 1.5 s invulnerability. Callers decide when a fall
+   * happens (usually: grounded, not mid-dash).
+   */
+  fallPlayer(to: { x: number; y: number }, opts: { label?: string; arrive?: string; color?: number } = {}): void {
+    const p = this.player;
+    p.forced = null;
+    p.legs.active = false;
+    p.iframes = 0;
+    if (p.invuln <= 0) {
+      this.fx.label(p.x, p.y - 20, opts.label ?? '坠落', COL.danger, 0.8);
+      this.hitPlayer(1, { kind: 'fall', x: p.x, y: p.y });
+    }
+    this.fx.burst(p.x, p.y - 4, 12, opts.color ?? P.pale, 80, 0.4, 2);
+    p.x = to.x; p.y = to.y; p.vx = p.vy = 0;
+    p.invuln = Math.max(p.invuln, 1.5);
+    if (opts.arrive) this.fx.label(to.x, to.y - 24, opts.arrive, P.fog, 1);
+    this.fx.burst(to.x, to.y - 9, 8, P.pale, 60, 0.3, 1);
+  }
+
   hitPlayer(dmg: number, o: HitPlayerOpts = {}): PlayerHitResult {
     if (this.state !== 'fight') return 'ignored';
     return this.player.hurt(this, dmg, o);
