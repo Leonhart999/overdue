@@ -22,11 +22,14 @@ function tilesOf(spec: SheetSpec): (name: string) => PixBuf {
   };
 }
 
-/** Lay out a 40x23 tile map. `isWall` decides wall cells; `floor` picks floor tile names. */
-function tiled(spec: SheetSpec, isWall: (x: number, y: number) => boolean, floor: (x: number, y: number) => string): PixBuf {
+/**
+ * Lay out a tile map of `size` pixels (default one screen, 40x23 tiles; a scrolling map passes its
+ * Arena.size). `isWall` decides wall cells; `floor` picks floor tile names.
+ */
+export function tiled(spec: SheetSpec, isWall: (x: number, y: number) => boolean, floor: (x: number, y: number) => string, size = { w: BG_W, h: BG_H }): PixBuf {
   const T = tilesOf(spec);
-  const cols = 40, rows = 23;
-  const out = new PixBuf(BG_W, BG_H);
+  const cols = Math.ceil(size.w / 16), rows = Math.ceil(size.h / 16);
+  const out = new PixBuf(size.w, size.h);
   const at = autotileWalls(cols, rows, isWall);
   for (let y = 0; y < rows; y++) {
     for (let x = 0; x < cols; x++) {

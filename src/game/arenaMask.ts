@@ -1,7 +1,8 @@
 /**
  * Arena outlines as tile masks. One mask drives both the baked background walls
  * (src/art/arenas.ts autotiles it) and the collision walls inside the playable bounds,
- * so the art and the physics cannot disagree. Tiles are 16 px on the 40x23 screen grid.
+ * so the art and the physics cannot disagree. Tiles are 16 px; one screen is 40x23 tiles,
+ * a scrolling map is `size / 16` tiles (pass the size to `tiled`).
  */
 import type { Rect } from '../engine/math';
 
@@ -14,6 +15,11 @@ export type TileMask = (c: number, r: number) => boolean;
 
 /** The border every arena has: top rows 0-2, bottom rows 21-22, side columns 0 and 39. */
 export const borderMask: TileMask = (c, r) => r <= 2 || r >= 21 || c === 0 || c === 39;
+
+/** The same border for a map of cols x rows tiles: 3 rows on top, 2 at the bottom, 1 column each side. */
+export function borderOf(cols: number, rows: number): TileMask {
+  return (c, r) => r <= 2 || r >= rows - 2 || c === 0 || c === cols - 1;
+}
 
 /**
  * Collision rects for the mask's wall tiles inside `bounds` (World already walls off everything

@@ -2,7 +2,8 @@
 import { COL, P, type Gfx } from '../engine/gfx';
 import { clamp } from '../engine/math';
 import { SLOT_TEXT, WEAPON_TEXT, CYBER_TEXT } from '../data/text';
-import type { World } from '../game/world';
+import type { Shape } from '../game/types';
+import { SCREEN_H, SCREEN_W, type World } from '../game/world';
 
 const SLOT_SHORT: Record<string, string> = {
   legs_stock: '冲刺', legs_leap: '跳跃', legs_blink: '瞬移', legs_slide: '滑铲',
@@ -102,10 +103,66 @@ export function drawHud(g: Gfx, w: World, camX: number, camY: number, hasIcon: (
     if (b.staggered) g.text('瘫痪', bx + bw / 2, by + 12, { layer: 'ui', align: 'center', color: P.amber });
   }
 
+  // ---- off-screen warnings (scrolling maps)
+  if (w.scrolls) drawOffscreen(g, w, camX, camY);
+
   // ---- prompt
   if (w.prompt) g.text(w.prompt, p.x - camX, p.y - camY - 40, { layer: 'ui', align: 'center', color: COL.interact });
 
   // ---- crosshair
   const inp = w.input;
   if (inp) g.img('cursor', 'cursor', inp.ax - camX, inp.ay - camY, { layer: 'ui', ox: 0.5, oy: 0.5 });
+}
+
+/** Point of a shape closest to (x, y). */
+function nearestOnShape(s: Shape, x: number, y: number): [number, number] {
+  switch (s.k) {
+    case 'rect': return [clamp(x, s.x, s.x + s.w), clamp(y, s.y, s.y + s.h)];
+    case 'line': {
+      const dx = s.x2 - s.x1, dy = s.y2 - s.y1, l2 = dx * dx + dy * dy || 1;
+      const t = clamp(((x - s.x1) * dx + (y - s.y1) * dy) / l2, 0, 1);
+      return [s.x1 + dx * t, s.y1 + dy * t];
+    }
+    default: {
+      const dx = x - s.x, dy = y - s.y, d = Math.hypot(dx, dy) || 1, r = Math.min(d, s.r);
+      return [s.x + (dx / d) * r, s.y + (dy / d) * r];
+    }
+  }
+}
+
+/**
+ * Scrolling maps: a marker on the screen edge for every enemy telegraph and boss part that is
+ * off screen, so a warning is never invisible. Red triangle = telegraph, magenta chevron = boss.
+ */
+function drawOffscreen(g: Gfx, w: World, camX: number, camY: number): void {
+  const cx = camX + SCREEN_W / 2, cy = camY + SCREEN_H / 2;
+  const m = 10, top = 40;
+  const mark = (x: number, y: number, color: number, size: number, alpha: number) => {
+    const sx = x - camX, sy = y - camY;
+    if (sx >= 0 && sx <= SCREEN_W && sy >= 0 && sy <= SCREEN_H) return;
+    const ex = clamp(sx, m, SCREEN_W - m), ey = clamp(sy, top, SCREEN_H - m);
+    const a = Math.atan2(sy - ey, sx - ex);
+    const ca = Math.cos(a), sa = Math.sin(a);
+    const tip = [ex + ca * size, ey + sa * size];
+    const l = [ex - ca * size * 0.6 - sa * size * 0.8, ey - sa * size * 0.6 + ca * size * 0.8];
+    const r = [ex - ca * size * 0.6 + sa * size * 0.8, ey - sa * size * 0.6 - ca * size * 0.8];
+    g.poly([tip[0], tip[1], l[0], l[1], r[0], r[1]], color, alpha, 'ui');
+  };
+  const pulse = 0.65 + 0.35 * Math.sin(w.realTime * 14);
+  for (const h of w.hazards) {
+    if (h.dead || !h.visible || h.team === 'player' || !h.hitsPlayer) continue;
+    const [x, y] = nearestOnShape(h.shape, cx, cy);
+    mark(x, y, h.warning ? P.red : P.rose, 7, h.warning ? pulse : 0.9);
+  }
+  const b = w.boss;
+  if (b && !b.dying) {
+    const seen = new Set<string>();
+    for (const pt of b.parts) {
+      if (pt.dead || !pt.targetable) continue;
+      const k = `${Math.round(pt.x / 40)}:${Math.round(pt.y / 40)}`;
+      if (seen.has(k)) continue;
+      seen.add(k);
+      mark(pt.hx, pt.hy, P.magenta, 5, 0.85);
+    }
+  }
 }

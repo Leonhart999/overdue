@@ -104,10 +104,14 @@ export class Fx {
     this.nums.push({ key, x: x + (this.rng.next() - 0.5) * 10, y, v, t: 0, c, big });
   }
 
+  /** On-screen part of the map (World keeps it in sync with the camera). */
+  view = { x: 0, y: 0, w: 640, h: 360 };
+
   label(x: number, y: number, text: string, c: number = P.amber, dur = 0.9): void {
-    // stack labels that would overlap a fresh one at the same spot; keep them below the HUD
-    let yy = Math.max(y, 72);
-    x = Math.max(40, Math.min(600, x));
+    // stack labels that would overlap a fresh one at the same spot; keep them on screen, below the HUD
+    const v = this.view;
+    let yy = Math.min(Math.max(y, v.y + 72), v.y + v.h - 8);
+    x = Math.max(v.x + 40, Math.min(v.x + v.w - 40, x));
     for (let i = 0; i < 4; i++) {
       if (!this.labels.some((l) => l.t < 0.5 && Math.abs(l.x - x) < 40 && Math.abs(l.y - yy) < 12)) break;
       yy -= 13;

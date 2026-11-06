@@ -68,6 +68,7 @@ export class FightScene extends Phaser.Scene {
     def.arena.setup(w);
     w.boss = def.make(w, this.data0.tier);
     w.input = this.kbm.state;
+    w.updateCamera(0, true);
     this.world = w;
     this.warmGlyphs();
     applySettings(w.fx);
@@ -143,7 +144,8 @@ export class FightScene extends Phaser.Scene {
 
   private render(): void {
     const w = this.world;
-    const [sx, sy] = w.fx.shakeOffset();
+    const [shx, shy] = w.fx.shakeOffset();
+    const sx = w.camX + shx, sy = w.camY + shy;
     this.cameras.main.setScroll(sx, sy);
     const g = this.gfx;
     g.begin();

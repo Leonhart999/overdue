@@ -22,8 +22,13 @@ export const SCREEN_H = 360;
 
 export interface Arena {
   id: string;
-  /** Background texture (floor + walls), 640x360. */
+  /** Background texture (floor + walls), the size of the whole map (`size`, default one screen). */
   bg: string;
+  /**
+   * Map size in pixels. Omit for a single-screen arena (640x360, fixed camera). A larger map
+   * scrolls: the camera follows the player (`camera` can override the target).
+   */
+  size?: { w: number; h: number };
   /** Playable rectangle (inside the walls). */
   bounds: Rect;
   playerSpawn: { x: number; y: number };
@@ -39,6 +44,11 @@ export interface Arena {
    * water goes live), and whether to jump/dash when it cannot make it. Gameplay never calls this.
    */
   botHint?(w: World): { x: number; y: number; jump: boolean } | null;
+  /**
+   * Scrolling maps only: where the camera should centre this frame (world pixels), e.g. a forced
+   * scroll or framing two points. Return null for the default (player plus aim lookahead).
+   */
+  camera?(w: World): { x: number; y: number } | null;
 }
 
 export interface HitPlayerOpts {
@@ -91,6 +101,13 @@ export class World {
   objects: { update(w: World, dt: number): void; draw?(g: Gfx, w: World): void; drawTop?(g: Gfx, w: World): void; dead?: boolean }[] = [];
   walls: Rect[] = [];
   bounds: Rect;
+  /** Map size (the arena's `size`, or one screen). */
+  readonly size: { w: number; h: number };
+  /** Camera top-left in world pixels (integer). Always 0, 0 on single-screen arenas. */
+  camX = 0;
+  camY = 0;
+  private camFX = 0;
+  private camFY = 0;
 
   player!: Player;
   boss: Boss | null = null;
@@ -115,6 +132,47 @@ export class World {
     this.walls.push({ x: b.x - T, y: b.y + b.h, w: b.w + 2 * T, h: T });
     this.walls.push({ x: b.x - T, y: b.y, w: T, h: b.h });
     this.walls.push({ x: b.x + b.w, y: b.y, w: T, h: b.h });
+    this.size = arena.size ?? { w: SCREEN_W, h: SCREEN_H };
+  }
+
+  /** The map is larger than the screen and the camera moves. */
+  get scrolls(): boolean { return this.size.w > SCREEN_W || this.size.h > SCREEN_H; }
+
+  /** The part of the map on screen. */
+  get view(): Rect { return { x: this.camX, y: this.camY, w: SCREEN_W, h: SCREEN_H }; }
+
+  /** Is a world point on screen (with `m` px of margin inside the edges)? */
+  onScreen(x: number, y: number, m = 0): boolean {
+    return x >= this.camX + m && x <= this.camX + SCREEN_W - m && y >= this.camY + m && y <= this.camY + SCREEN_H - m;
+  }
+
+  /**
+   * Move the camera toward its target. `snap` jumps straight there (fight start).
+   * Default target: the player, pushed up to 56 px toward the cursor (measured on screen, so the
+   * camera moving does not feed back into the lookahead).
+   */
+  updateCamera(dt: number, snap = false): void {
+    if (!this.scrolls || !this.player) return;
+    let t = this.arena.camera?.(this) ?? null;
+    if (!t) {
+      const p = this.player, inp = this.input;
+      let lx = 0, ly = 0;
+      if (inp && !snap) {
+        lx = (inp.ax - this.camX - SCREEN_W / 2) * 0.25;
+        ly = (inp.ay - this.camY - SCREEN_H / 2) * 0.25;
+        const l = Math.hypot(lx, ly);
+        if (l > 56) { lx *= 56 / l; ly *= 56 / l; }
+      }
+      t = { x: p.x + lx, y: p.y - 10 + ly };
+    }
+    const tx = clamp(t.x - SCREEN_W / 2, 0, this.size.w - SCREEN_W);
+    const ty = clamp(t.y - SCREEN_H / 2, 0, this.size.h - SCREEN_H);
+    const k = snap ? 1 : 1 - Math.exp(-7 * dt);
+    this.camFX += (tx - this.camFX) * k;
+    this.camFY += (ty - this.camFY) * k;
+    this.camX = Math.round(this.camFX);
+    this.camY = Math.round(this.camFY);
+    this.fx.view = this.view;
   }
 
   sfx(name: SfxName, vol = 1, pitch = 1): void { audio.sfx(name, vol, pitch); }
@@ -134,6 +192,7 @@ export class World {
     this.input = input;
     this.realTime += dt;
     this.fx.update(dt);
+    this.updateCamera(dt);
     // during hitstop nothing reads input, so the scene must keep this step's presses (see `frozen`)
     this.frozen = this.hitstop > 0;
     if (this.hitstop > 0) { this.hitstop -= dt; return; }
