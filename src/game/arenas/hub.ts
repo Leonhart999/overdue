@@ -4,7 +4,6 @@
  */
 import { COL, P, type Gfx } from '../../engine/gfx';
 import { dist } from '../../engine/math';
-import { WEAPON_TEXT } from '../../data/text';
 import { Body } from '../body';
 import { Bullet } from '../bullet';
 import { Zone } from '../hazard';
@@ -15,7 +14,7 @@ import type { Arena, World } from '../world';
 
 export interface HubHooks {
   current(): WeaponId;
-  swapWeapon(id: WeaponId): void;
+  openArmory(): void;
   openBench(): void;
   openRecords(): void;
   openSim(): void;
@@ -40,16 +39,48 @@ class Station extends Body {
   }
 }
 
-class WeaponRack extends Station {
-  constructor(x: number, y: number, readonly weapon: WeaponId, private hooks: HubHooks) {
-    super(x, y, 7, 'rack', `拿起 ${WEAPON_TEXT[weapon].name}`, () => hooks.swapWeapon(weapon));
+/**
+ * Armory (武器库): one wide wall cabinet holding every weapon. E opens the armory panel.
+ * Weapons hang in bays laid out from `WEAPONS` (up to 4 per row, more rows as weapons are added);
+ * the bay of the weapon in hand is empty with a cyan light.
+ */
+const ARMORY = { w: 176, h: 48, boardTop: 11, boardH: 24, perRow: 4 };
+class Armory extends Body {
+  constructor(x: number, y: number, private hooks: HubHooks) {
+    super();
+    this.x = x; this.y = y;
+    // wide reach so the prompt shows along the whole cabinet; the cabinet itself is a wall rect
+    this.r = 44; this.hz = 10; this.hr = 44;
+    this.mass = 0;
+    this.solid = false;
+    this.targetable = false;
+    this.interactable = true;
+    this.interactLabel = '打开武器库';
   }
+  onInteract(w: World): void { w.sfx('uiConfirm'); this.hooks.openArmory(); }
   draw(g: Gfx, w: World): void {
-    super.draw(g);
-    const held = this.hooks.current() === this.weapon;
-    if (!held) g.img('wpn', this.weapon, this.x, this.y - 16, { ox: 0.5, oy: 0.5, depth: this.y + 4, rot: -Math.PI / 2 });
-    const near = dist(w.player.x, w.player.y, this.x, this.y) < 40;
-    g.text(WEAPON_TEXT[this.weapon].name, this.x, this.y + 4, { color: held ? COL.player : near ? P.pale : P.slate, align: 'center' });
+    const A = ARMORY;
+    const left = this.x - A.w / 2, top = this.y + 3 - A.h;
+    g.ellipse(this.x, this.y + 1, A.w / 2, 4, P.ink, 0.45, 'floor');
+    g.img('armory', 'armory', this.x, this.y + 3, { ox: 0.5, oy: 1, depth: this.y });
+    const n = WEAPONS.length;
+    const rows = Math.ceil(n / A.perRow);
+    const held = this.hooks.current();
+    WEAPONS.forEach((id, i) => {
+      const row = Math.floor(i / A.perRow), col = i % A.perRow;
+      const inRow = Math.min(A.perRow, n - row * A.perRow);
+      const bw = (A.w - 12) / inRow;
+      const cx = Math.round(left + 6 + bw * (col + 0.5));
+      const cy = Math.round(top + A.boardTop + (A.boardH / rows) * (row + 0.5));
+      // hook pegs, then the weapon (or an empty bay) and its light
+      // (all drawn as world images just above the cabinet, so the player walking in front covers them)
+      const d = this.y + 0.5;
+      g.img('armory_bits', 'pegs', cx, cy - 6, { ox: 0.5, oy: 0, depth: d });
+      if (id !== held) g.img('wpn', id, cx, cy, { ox: 0.5, oy: 0.5, depth: d });
+      g.img('armory_bits', id === held ? 'led_on' : 'led_off', cx, top + A.boardTop + A.boardH + 1, { ox: 0.5, oy: 0, depth: d });
+    });
+    const near = dist(w.player.x, w.player.y, this.x, this.y) - this.r < 30;
+    g.text('武器库', this.x, this.y + 6, { color: near ? P.pale : P.slate, align: 'center' });
   }
 }
 
@@ -209,7 +240,9 @@ export function makeHubArena(hooks: HubHooks): Arena {
         { x: 16, y: 288, w: 16, h: 30 },  // bed
         { x: 576, y: 288, w: 32, h: 30 }, // crate stack
       );
-      WEAPONS.forEach((id, i) => w.add(new WeaponRack(56 + i * 58, 80, id, hooks)));
+      // armory against the top wall, left of the vending machine
+      w.walls.push({ x: 57, y: 48, w: 172, h: 48 });
+      w.add(new Armory(143, 96, hooks));
       w.add(new Station(110, 296, 20, 'bench', '改装义体', () => hooks.openBench()));
       w.add(new Station(196, 300, 10, 'terminal', '查看战绩', () => hooks.openRecords()));
       w.add(new Station(372, 310, 10, 'terminal', '头目模拟器', () => hooks.openSim()));

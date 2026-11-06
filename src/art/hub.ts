@@ -1,6 +1,8 @@
 /**
  * Hub (据点) art: background `bg_hub` (640x360) and station sprites `hub` (frames below).
- *   rack       16x32  weapon stand (weapon sprite drawn on top at runtime)
+ *   rack       16x32  weapon stand (unused since the armory replaced the racks)
+ * Sheet `armory` (176x48): one wide wall armory; weapons and their bay lights are drawn at runtime.
+ * Sheet `armory_bits` (16x4): pegs (a weapon's two hooks), led_on / led_off (bay light).
  *   bench      48x32  cyberware workbench with a robot arm
  *   terminal   24x32  records terminal (screen glow drawn at runtime)
  *   dummy      24x40  training dummy, dummy_hit (dented)
@@ -38,6 +40,52 @@ function rack(): PixBuf {
     b.set(5, 10, C.fog); b.set(10, 10, C.fog);
     b.outline(C.ink);
   });
+}
+
+/** Wide wall armory: steel posts, header plate, pegboard, counter with a hazard edge. */
+export const ARMORY_W = 176, ARMORY_H = 48;
+function armory(): PixBuf {
+  return frame(ARMORY_W, ARMORY_H, (b) => {
+    const W2 = ARMORY_W;
+    // back pegboard
+    b.rect(4, 10, W2 - 8, 26, C.navy);
+    b.rect(5, 11, W2 - 10, 24, C.indigo);
+    for (let y = 13; y < 34; y += 3) for (let x = 7; x < W2 - 6; x += 3) b.set(x, y, C.night);
+    // header plate with vents and status lamps
+    b.rect(2, 2, W2 - 4, 8, C.slate);
+    b.hline(2, W2 - 3, 2, C.fog);
+    b.rect(3, 4, W2 - 6, 5, C.navy);
+    for (let x = 8; x < 40; x += 3) b.vline(x, 5, 7, C.ink);
+    for (let x = W2 - 40; x < W2 - 8; x += 3) b.vline(x, 5, 7, C.ink);
+    b.rect(Math.floor(W2 / 2) - 24, 4, 48, 5, C.ink);
+    b.hline(Math.floor(W2 / 2) - 22, Math.floor(W2 / 2) + 21, 6, C.teal);
+    for (const x of [46, 50, W2 - 51, W2 - 47]) b.set(x, 6, C.amber);
+    // side posts
+    for (const x0 of [0, W2 - 5]) {
+      b.rect(x0, 2, 5, 40, C.slate);
+      b.vline(x0 + 1, 3, 40, C.fog);
+      b.vline(x0 + 4, 3, 40, C.navy);
+      for (let y = 14; y < 34; y += 6) b.set(x0 + 2, y, C.cyan);
+    }
+    // counter + hazard edge
+    b.rect(2, 36, W2 - 4, 4, C.slate);
+    b.hline(2, W2 - 3, 36, C.fog);
+    b.rect(3, 40, W2 - 6, 4, C.navy);
+    for (let x = 3; x < W2 - 3; x++) b.set(x, 43, (x >> 2) % 2 ? C.amber : C.ink);
+    b.rect(8, 44, 3, 4, C.navy);
+    b.rect(W2 - 11, 44, 3, 4, C.navy);
+    b.outline(C.ink);
+  });
+}
+
+function armoryBits(): { name: string; buf: PixBuf }[] {
+  const pegs = frame(16, 4, (b) => { b.vline(1, 0, 2, C.fog); b.vline(14, 0, 2, C.fog); b.set(1, 3, C.ink); b.set(14, 3, C.ink); });
+  const led = (on: boolean) => frame(16, 4, (b) => {
+    b.rect(6, 0, 4, 3, C.ink);
+    b.rect(7, 1, 2, 1, on ? C.cyan : C.slate);
+    if (on) b.set(7, 0, C.ice);
+  });
+  return [{ name: 'pegs', buf: pegs }, { name: 'led_on', buf: led(true) }, { name: 'led_off', buf: led(false) }];
 }
 
 function bench(): PixBuf {
@@ -217,6 +265,8 @@ export function buildHubArt(): SheetSpec[] {
         tall('elevator', elevator(), 48, 48),
       ],
     },
+    { key: 'armory', group: 'Hub', frameW: ARMORY_W, frameH: ARMORY_H, frames: [{ name: 'armory', buf: armory() }] },
+    { key: 'armory_bits', group: 'Hub', frameW: 16, frameH: 4, columns: 3, frames: armoryBits() },
   ];
 }
 

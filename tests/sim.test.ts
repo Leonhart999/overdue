@@ -64,7 +64,7 @@ describe('hub', () => {
     const { makeHubArena } = await import('../src/game/arenas/hub');
     for (const weapon of WEAPONS) {
       let departed = false;
-      const arena = makeHubArena({ current: () => weapon, swapWeapon: () => {}, openBench: () => {}, openRecords: () => {}, openSim: () => {}, depart: () => { departed = true; } });
+      const arena = makeHubArena({ current: () => weapon, openArmory: () => {}, openBench: () => {}, openRecords: () => {}, openSim: () => {}, depart: () => { departed = true; } });
       const w = new World(arena, 1, 5);
       w.player = new Player(newLoadout(weapon), 470, 200);
       arena.setup(w);

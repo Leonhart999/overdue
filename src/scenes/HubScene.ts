@@ -1,5 +1,5 @@
 /**
- * Hub (据点): walk around between runs. Weapon racks, cyberware bench (practice only),
+ * Hub (据点): walk around between runs. Armory, cyberware bench (practice only),
  * records terminal, training range and the exit elevator.
  */
 import Phaser from 'phaser';
@@ -8,10 +8,10 @@ import { COL, P } from '../engine/gfx';
 import { PhaserGfx } from '../engine/gfxPhaser';
 import { clearEdges } from '../engine/input';
 import { KeyboardMouseInput } from '../engine/inputPhaser';
-import { BOSS_TEXT, CYBER_TEXT, SLOT_TEXT, WEAPON_TEXT } from '../data/text';
+import { BOSS_TEXT, CYBER_TEXT, MOD_TEXT, SLOT_TEXT, WEAPON_TEXT } from '../data/text';
 import { makeHubArena } from '../game/arenas/hub';
 import { availableBosses } from '../game/bosses';
-import { CYBER_POOL, CYBER_SLOT, SLOTS, STOCK, WEAPONS, newLoadout, type CyberId, type Loadout, type Slot, type WeaponId } from '../game/loadout';
+import { CYBER_POOL, CYBER_SLOT, SLOTS, STOCK, WEAPON_MODS, WEAPONS, newLoadout, type CyberId, type Loadout, type Slot, type WeaponId } from '../game/loadout';
 import { Player } from '../game/player';
 import { newRun, nextFightParams, saveMeta } from '../game/run';
 import { World } from '../game/world';
@@ -21,7 +21,7 @@ import { session } from './session';
 import { fmt, goto, H, W } from '../ui/ui';
 import { textWidth } from '../ui/crispText';
 import {
-  cells, cellsWidth, chip, dim, dots, focusRow, header, heading, hints, hintStrip, keycap, panel, para, SLOT_COL, socket, tagText, txt, type Hint,
+  cells, cellsWidth, chip, dim, dots, focusRow, header, heading, hints, hintStrip, keycap, mouseIcon, panel, para, SLOT_COL, socket, tagText, txt, WEAPON_COL, type Hint,
 } from '../ui/kit';
 
 const DT = 1 / 60;
@@ -38,18 +38,24 @@ const HUB_MUSIC: MusicTrack = {
   wave: 'triangle',
 };
 
-type Overlay = 'bench' | 'records' | 'menu' | 'sim' | null;
+type Overlay = 'armory' | 'bench' | 'records' | 'menu' | 'sim' | null;
 
 // overlay layouts (screen space) and their hint rows
+const ARMORY = { x: 40, y: 40, w: 560, h: 292, rowY: 80, rowH: 46, listW: 212 };
 const BENCH = { x: 72, y: 40, w: 496, h: 292, rowY: 80, rowH: 52 };
 const SIM = { x: 64, y: 40, w: 512, h: 292, rowY: 80, rowH: 42, listW: 268 };
 const RECORDS = { x: 120, y: 68, w: 400, h: 224 };
 const HUB_HINTS: Hint[] = [
   { keys: ['E'], label: '互动' },
-  { keys: [], label: '武器架换武器' },
+  { keys: [], label: '武器库换武器' },
   { keys: [], label: '义体台试义体' },
   { keys: [], label: '右边是训练场' },
   { keys: [], label: '电梯出发' },
+];
+const ARMORY_HINTS: Hint[] = [
+  { keys: ['↑↓'], label: '选武器' },
+  { keys: ['Enter', 'mouseL'], label: '拿上' },
+  { keys: ['E', 'Esc'], label: '关闭' },
 ];
 const BENCH_HINTS: Hint[] = [
   { keys: ['↑↓'], label: '选部位' },
@@ -104,7 +110,7 @@ export class HubScene extends Phaser.Scene {
 
     const arena = makeHubArena({
       current: () => this.loadout.weapon,
-      swapWeapon: (id) => this.swapWeapon(id),
+      openArmory: () => { this.open('armory'); this.row = Math.max(0, WEAPONS.indexOf(this.loadout.weapon)); },
       openBench: () => this.open('bench'),
       openRecords: () => this.open('records'),
       openSim: () => this.open('sim'),
@@ -233,8 +239,13 @@ export class HubScene extends Phaser.Scene {
     const my = inp.ay - this.cameras.main.scrollY;
     for (const k of keys) {
       const close = k === 'Escape' || k === 'KeyE' || k === 'KeyF' || k === 'KeyP';
-      if (this.overlay === 'bench') {
-        // mouse hover picks the row
+      if (this.overlay === 'armory') {
+        const n = WEAPONS.length;
+        if (k === 'ArrowUp' || k === 'KeyW') { this.row = (this.row + n - 1) % n; audio.sfx('ui'); }
+        else if (k === 'ArrowDown' || k === 'KeyS') { this.row = (this.row + 1) % n; audio.sfx('ui'); }
+        else if (k === 'Enter' || k === 'Space' || k === 'MouseLeft') { this.swapWeapon(WEAPONS[this.row]); this.overlay = null; }
+        else if (close) this.overlay = null;
+      } else if (this.overlay === 'bench') {
         if (k === 'ArrowUp' || k === 'KeyW') { this.row = (this.row + 3) % 4; audio.sfx('ui'); }
         else if (k === 'ArrowDown' || k === 'KeyS') { this.row = (this.row + 1) % 4; audio.sfx('ui'); }
         else if (k === 'ArrowLeft' || k === 'KeyA' || k === 'MouseRight') this.cycle(SLOTS[this.row], -1);
@@ -254,6 +265,9 @@ export class HubScene extends Phaser.Scene {
     }
     // mouse hover picks the row
     const mx = inp.ax - this.cameras.main.scrollX;
+    if (this.overlay === 'armory' && mx > ARMORY.x && mx < ARMORY.x + 6 + ARMORY.listW) {
+      for (let i = 0; i < WEAPONS.length; i++) if (my >= ARMORY.rowY + i * ARMORY.rowH - 2 && my < ARMORY.rowY + (i + 1) * ARMORY.rowH - 2) this.row = i;
+    }
     if (this.overlay === 'bench' && mx > BENCH.x && mx < BENCH.x + BENCH.w) {
       for (let i = 0; i < 4; i++) if (my >= BENCH.rowY + i * BENCH.rowH - 2 && my < BENCH.rowY + (i + 1) * BENCH.rowH - 2) this.row = i;
     }
@@ -275,6 +289,7 @@ export class HubScene extends Phaser.Scene {
     drawHud(g, w, sx, sy, (f) => this.textures.exists('ico') && this.textures.get('ico').has(f));
     if (!this.overlay) hintStrip(g, HUB_HINTS, H - 21, { alpha: 0.9 });
     w.fx.drawFlash(g, W, H);
+    if (this.overlay === 'armory') this.drawArmory();
     if (this.overlay === 'bench') this.drawBench();
     if (this.overlay === 'records') this.drawRecords();
     if (this.overlay === 'sim') this.drawSim();
@@ -294,6 +309,58 @@ export class HubScene extends Phaser.Scene {
     header(g, x, y, w, title, tag, accent, { layer: 'over', sub, subColor: P.amber });
     g.rect(x + 8, y + h - 25, w - 16, 1, P.navy, 1, 'over');
     hints(g, hintsRow, x + w / 2, y + h - 19, { layer: 'over', align: 'center' });
+  }
+
+  /** Armory: weapon list on the left, the focused weapon's rules and mods on the right. */
+  private drawArmory(): void {
+    const g = this.gfx, L = 'over' as const;
+    const A = ARMORY;
+    this.frame(A.x, A.y, A.w, A.h, '武器库', 'ARMORY', P.amber, ARMORY_HINTS, '一局只带一把 · 奖励里会出现它的改装');
+    const held = this.loadout.weapon;
+    WEAPONS.forEach((id, i) => {
+      const y = A.rowY + i * A.rowH;
+      const f = i === this.row;
+      const x = A.x + 6, w = A.listW;
+      if (f) focusRow(g, x, y, w, A.rowH - 4, WEAPON_COL[id], L);
+      if (i > 0) g.rect(x + 8, y - 3, w - 16, 1, P.navy, 1, L);
+      socket(g, x + 16, y + 6, 28, 28, { layer: L, edge: f ? WEAPON_COL[id] : undefined });
+      g.img('wpn', id, x + 30, y + 20, { layer: L, ox: 0.5, oy: 0.5 });
+      txt(g, WEAPON_TEXT[id].name, x + 52, y + 5, { layer: L, color: f ? P.white : P.pale });
+      txt(g, WEAPON_TEXT[id].tag, x + 52, y + 21, { layer: L, color: f ? P.fog : P.slate });
+      if (id === held) chip(g, 'HELD', x + w - 8, y + 7, { layer: L, align: 'right', color: P.ink, fill: COL.player });
+    });
+    // detail pane
+    const id = WEAPONS[this.row];
+    const col = WEAPON_COL[id];
+    const px = A.x + A.listW + 18, pw = A.x + A.w - 14 - px;
+    let y = A.rowY;
+    socket(g, px, y, 76, 40, { layer: L, edge: col });
+    g.img('wpn', id, px + 38, y + 20, { layer: L, ox: 0.5, oy: 0.5, scale: 3 });
+    heading(g, WEAPON_TEXT[id].name, px + 88, y + 1, { layer: L });
+    txt(g, WEAPON_TEXT[id].tag, px + 88, y + 27, { layer: L, color: col });
+    const best = session.meta.bestRun[id];
+    tagText(g, 'BEST', px + pw, y + 4, { layer: L, align: 'right', color: P.slate });
+    txt(g, best ? fmt(best) : '—', px + pw, y + 13, { layer: L, align: 'right', color: best ? P.amber : P.slate });
+    y += 50;
+    const LH = 13;
+    const rule = (btn: 'l' | 'r', label: string, body: string, maxLines: number) => {
+      mouseIcon(g, btn, px, y - 1, { layer: L });
+      txt(g, label, px + 14, y, { layer: L, color: P.fog });
+      const n = para(g, body, px + 64, y, pw - 64, { layer: L, color: P.pale, lineH: LH, maxLines });
+      y += n * LH + 6;
+    };
+    rule('l', '主武器', WEAPON_TEXT[id].primary, 3);
+    rule('r', '特殊', WEAPON_TEXT[id].special, 4);
+    g.rect(px, y, pw, 1, P.navy, 1, L);
+    y += 5;
+    txt(g, '改装', px, y, { layer: L, color: P.fog });
+    tagText(g, 'MODS', px + pw, y + 4, { layer: L, align: 'right', color: col });
+    y += 16;
+    for (const m of WEAPON_MODS[id]) {
+      txt(g, MOD_TEXT[m].name, px, y, { layer: L, color: col });
+      const n = para(g, MOD_TEXT[m].desc, px + 64, y, pw - 64, { layer: L, color: P.steel, lineH: LH, maxLines: 2 });
+      y += n * LH + 4;
+    }
   }
 
   private drawBench(): void {
