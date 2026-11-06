@@ -74,6 +74,7 @@ export const BOSS_TEXT: Record<BossId, { name: string; en: string; place: string
   lux: { name: '卢克丝夫人', en: 'MADAME LUX', place: '霓虹集市 · 夜店舞台' },
   octohydra: { name: '八头蛇', en: 'OCTOHYDRA', place: '下网 · 淹水机房' },
   kade: { name: '凯德主管', en: 'DIRECTOR KADE', place: 'Skyline 区 · 天台停机坪' },
+  vesper: { name: '维斯珀', en: 'VESPER', place: '环线列车 · 车顶' },
 };
 
 export const UI = {

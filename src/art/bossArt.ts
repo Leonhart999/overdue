@@ -4,7 +4,8 @@ import { buildCoverArt } from './cover';
 import { buildLuxArt } from './lux';
 import { buildOctohydraArt } from './octohydra';
 import { buildKadeArt } from './kade';
+import { buildVesperArt } from './vesper';
 
 export function buildBossArt(): SheetSpec[] {
-  return [...buildLuxArt(), ...buildOctohydraArt(), ...buildKadeArt(), ...buildCoverArt()];
+  return [...buildLuxArt(), ...buildOctohydraArt(), ...buildKadeArt(), ...buildVesperArt(), ...buildCoverArt()];
 }
