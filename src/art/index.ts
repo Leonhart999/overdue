@@ -8,7 +8,7 @@
 import type Phaser from 'phaser';
 import { renderSheet, type SheetSpec } from './core/sheet';
 import { buildOwFrames, MAIN_CHARACTERS, owSheet } from './actors/characters';
-import { buildBossFrames } from './actors/gearjaw';
+import { buildGearjawTopFrames } from './actors/gearjawTop';
 import { buildPortraitSheet } from './actors/portraits';
 import { buildSprites } from './sprites';
 import { buildArenaBackgrounds } from './arenas';
@@ -27,7 +27,7 @@ export function registerArt(build: () => SheetSpec[]): void { extra.push(build);
 export function buildAllSpecs(): SheetSpec[] {
   if (specs) return specs;
   const echo = MAIN_CHARACTERS.find((c) => c.id === 'echo')!;
-  const bosses = buildBossFrames().map((b) => ({
+  const bosses = buildGearjawTopFrames().map((b) => ({
     key: `bt_${b.id}`, group: 'Bosses', frameW: 96, frameH: 96, columns: 4, frames: b.frames,
   }) satisfies SheetSpec);
   specs = [
