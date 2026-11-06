@@ -2,7 +2,7 @@
  * Standees (立绘): large half-body character portraits for intro cards, the hub and the result screen.
  *
  *   standee  112x144  echo, echo_hurt, echo_win, gearjaw, gearjaw_p2, lux, lux_p2,
- *                     octohydra, octohydra_p2, kade, kade_p2
+ *                     octohydra, octohydra_p2, kade, kade_p2, vesper, vesper_p2
  *
  * Shared lighting so the cast reads as one set: key light from the upper left front, a neon rim
  * light on the right-hand silhouette edge in each character's signature colour. Echo turns 3/4
@@ -36,6 +36,7 @@ export const STANDEE_FOCUS: Record<string, { face: Pt; glow: Pt[] }> = {
   lux: { face: [55, 48], glow: [[26, 51], [58, 48]] },
   octohydra: { face: [37, 55], glow: [[75, 80], [77, 19]] },
   kade: { face: [50, 37], glow: [[48, 37], [24, 112]] },
+  vesper: { face: [55, 44], glow: [[48, 42], [109, 8], [89, 97]] }, // glows: visor, muzzle (hot in P2), armband
 };
 
 const W = STANDEE_W, H = STANDEE_H;
@@ -1330,6 +1331,176 @@ function kade(p2: boolean): PixBuf {
   });
 }
 
+// ------------------------------------------------------------------ VESPER
+
+const COAT_V: Mat = { ramp: [C.ink, C.night, C.navy, C.indigo, C.slate], bias: -0.06 };
+const HAIR_V: Mat = { ramp: [C.slate, C.steel, C.fog, C.pale, C.white], bias: 0.06, rim: [C.white, C.pale] };
+const SKIN_V: Mat = { ramp: [C.skinD, C.skinM, C.skinL], bias: 0.16 };
+const GUN_V: Mat = { ramp: [C.ink, C.night, C.navy, C.slate, C.steel], bias: 0, rim: [C.pale, C.steel] };
+const GLOVE_V: Mat = { ramp: [C.ink, C.night, C.navy, C.indigo], bias: 0 };
+const BACK_V: Mat = { ramp: [C.ink, C.night, C.navy], bias: -0.2, rim: [C.indigo], back: true };
+
+/** P1: a gantry beam overhead and city lights smeared into speed streaks. P2: a dark tunnel. */
+function vesperBackdrop(s: Stage, p2: boolean): void {
+  if (!p2) {
+    // gantry truss overhead (the arena hazard), red warning lamps
+    s.part(BACK_V, (b) => {
+      b.rect(0, 4, W, 3, 1); b.rect(0, 14, W, 3, 1);
+      for (let x = 0; x < W; x += 10) { b.line(x, 6, x + 5, 14, 1); b.line(x + 5, 14, x + 10, 6, 1); }
+    }, { r: 1, cast: 0 });
+    s.paint((b) => { for (const x of [8, 56, 104]) { b.set(x, 10, C.red); b.set(x + 1, 10, C.rose); } });
+    // speed streaks behind the shoulders
+    const streaks: [number, number, number, number][] = [
+      [0, 62, 30, C.sodium], [2, 76, 22, C.rose], [0, 92, 36, C.ice], [4, 110, 26, C.sodium], [0, 126, 30, C.pale],
+      [80, 58, 32, C.ice], [86, 72, 26, C.sodium], [78, 120, 34, C.rose], [84, 134, 28, C.ice], [70, 40, 42, C.pale],
+    ];
+    for (const [x, y, len] of streaks) s.part(BACK_V, (b) => b.capsule(x, y, x + len, y, 1.3, 1), { r: 1, cast: 0 });
+    s.paint((b) => {
+      for (const [x, y, len, c] of streaks) {
+        b.hline(x + 2, x + len - 4, y, c);
+        b.hline(x + len - 8, x + len - 3, y, c === C.sodium ? C.amber : C.white);
+      }
+    });
+  } else {
+    // tunnel: ribbed arch segments, sparse lamps streaking past
+    s.part(BACK_V, (b) => {
+      b.ring(56, 112, 68, 1, 7);
+      b.ring(56, 112, 54, 1, 3);
+      b.rect(0, 120, 10, 24, 1); b.rect(102, 118, 10, 26, 1);
+    }, { r: 2, cast: 0 });
+    s.paint((b) => {
+      for (const [x, y] of [[12, 70], [100, 64], [30, 48], [80, 46], [6, 100]] as Pt[]) { b.hline(x - 4, x + 3, y, C.orange); b.hline(x, x + 3, y, C.amber); }
+    }, s.mask((b) => b.ring(56, 112, 68, 1, 7)));
+  }
+}
+
+function vesper(p2: boolean): PixBuf {
+  const s = new Stage([C.red, C.maroon]);
+  vesperBackdrop(s, p2);
+  const hx = 58, hy = 40;
+  // --- hair, back mass: a sharp platinum bob cut level at the jaw
+  s.part(HAIR_V, (b) => {
+    b.ellipse(hx + 3, hy - 4, 17.5, 17, 1);
+    b.poly([[hx + 4, hy - 6], [hx + 20, hy - 4], [hx + 21, hy + 12], [hx + 6, hy + 17]], 1);
+  }, { r: 10 });
+  s.paint((b) => { for (const [x0, x1] of [[hx + 8, hx + 9], [hx + 13, hx + 15], [hx + 18, hx + 20]] as const) b.line(x0, hy - 8, x1, hy + 12, C.steel); });
+  s.light(-0.3, (b) => b.ellipse(hx + 4, hy + 14, 12, 6, 1));
+  // --- coat: slim shoulders, long and dark
+  const coat = s.part(COAT_V, (b) => b.poly([[24, 104], [32, 86], [46, 78], [70, 78], [86, 82], [94, 96], [98, 144], [20, 144]], 1), { r: 8 });
+  s.light(-0.14, (b) => b.poly([[66, 76], [100, 76], [100, 144], [62, 144]], 1), coat);
+  // lapels + clasps + red piping down the closure
+  s.part(COAT_V, (b) => b.poly([[46, 80], [58, 82], [52, 112], [44, 144], [34, 144], [40, 108]], 1), { r: 3, bias: 0.08 });
+  s.paint((b) => {
+    b.line(58, 82, 52, 112, C.maroon); b.line(52, 112, 44, 143, C.maroon);
+    for (const y of [96, 108, 120]) { b.set(56 - (y - 96) / 4, y, C.steel); b.set(57 - (y - 96) / 4, y, C.fog); }
+  });
+  // --- neck + tall collar
+  s.part(SKIN_V, (b) => b.poly([[52, 52], [64, 52], [65, 74], [53, 74]], 1), { r: 5, bias: -0.25 });
+  s.part(COAT_V, (b) => b.poly([[44, 62], [52, 70], [66, 70], [74, 60], [78, 80], [46, 82]], 1), { r: 4, bias: 0.05 });
+  s.paint((b) => { b.line(44, 62, 52, 70, C.red); b.hline(52, 66, 70, C.maroon); });
+  // rifle sling across the chest (near shoulder -> far hip)
+  s.part({ ramp: [C.ink, C.umber, C.maroon, C.red], bias: -0.1 }, (b) => b.poly([[80, 80], [86, 84], [38, 144], [30, 144]], 1), { r: 1.5, cast: 0.2 });
+  s.paint((b) => { b.rect(60, 108, 4, 5, C.steel); b.set(60, 108, C.pale); b.rect(61, 110, 2, 2, C.ink); });
+  // --- near arm (viewer-right) holding the rifle on the shoulder; red Halcyon armband
+  const arm = s.part(COAT_V, (b) => b.capsule(86, 86, 92, 114, 7, 1), { r: 6, cast: 0.25 });
+  s.part({ ramp: [C.maroon, C.red, C.rose], rim: [C.rose, C.red] }, (b) => b.capsule(82, 98, 97, 96, 3, 1), { r: 2, clip: arm, cast: 0.2 });
+  s.paint((b) => { b.ring(89.5, 97.5, 2.2, C.white, 1); b.set(89, 97, C.red); });
+  s.part(COAT_V, (b) => b.capsule(92, 114, 80, 104, 6, 1), { r: 5, cast: 0.25 });
+  // --- rifle over the shoulder: stock low at the front, long barrel up and back past the frame
+  const g0: Pt = [74, 120], g1: Pt = [111, 2];
+  const dl = Math.hypot(g1[0] - g0[0], g1[1] - g0[1]);
+  const ux = (g1[0] - g0[0]) / dl, uy = (g1[1] - g0[1]) / dl;
+  const at = (t: number, off = 0): Pt => [g0[0] + (g1[0] - g0[0]) * t - uy * off, g0[1] + (g1[1] - g0[1]) * t + ux * off];
+  const [ax, ay] = at(0), [bx, by] = at(0.42), [cx, cy] = at(0.42), [dx, dy] = at(1);
+  s.part(GUN_V, (b) => { b.capsule(ax, ay, bx, by, 3.4, 1); b.poly([at(0.05, -4), at(0.2, -4), at(0.2, 3), at(0.05, 3)], 1); }, { r: 3, cast: 0.3 });
+  s.part(GUN_V, (b) => b.capsule(cx, cy, dx, dy, 1.6, 1), { r: 2, cast: 0.25, bias: 0.06 });
+  // scope on the head side, muzzle brake
+  const [s0x, s0y] = at(0.3, -5), [s1x, s1y] = at(0.48, -5);
+  s.part(GUN_V, (b) => { b.capsule(s0x, s0y, s1x, s1y, 2.4, 1); b.capsule(...at(0.36, -1), ...at(0.36, -4), 1, 1); }, { r: 2, cast: 0.25, bias: 0.08 });
+  s.paint((b) => { const [lx, ly] = at(0.49, -5); b.set(Math.round(lx), Math.round(ly), C.red); b.set(Math.round(lx) - 1, Math.round(ly), C.rose); });
+  s.part(GUN_V, (b) => b.capsule(...at(0.93), ...at(0.99), 2.4, 1), { r: 1.5, cast: 0.15 });
+  if (p2) {
+    // overcharged barrel: heat glow climbing towards the muzzle
+    s.paint((b) => {
+      for (let t = 0.44; t <= 0.99; t += 0.004) {
+        const [x, y] = at(t);
+        const c = t > 0.9 ? C.white : t > 0.78 ? C.amber : t > 0.62 ? C.sodium : C.orange;
+        b.set(Math.round(x), Math.round(y), c);
+        if (t > 0.7) b.set(Math.round(x) + 1, Math.round(y), t > 0.9 ? C.amber : C.orange);
+      }
+    });
+  } else {
+    s.paint((b) => { for (let t = 0.46; t < 0.92; t += 0.08) { const [x, y] = at(t, 1); b.set(Math.round(x), Math.round(y), C.steel); } });
+  }
+  // gloved hand on the grip
+  s.part(GLOVE_V, (b) => { b.ellipse(79, 103, 4.5, 4, 1); b.capsule(76, 101, 74, 96, 1.6, 1); }, { r: 2, cast: 0.25 });
+  // --- face
+  s.part(SKIN_V, (b) => {
+    b.ellipse(hx, hy, 12, 13.5, 1);
+    b.poly([[hx - 12, hy + 1], [hx - 10, hy + 10], [hx - 5, hy + 16], [hx + 2, hy + 17], [hx + 9, hy + 11], [hx + 12, hy + 2]], 1);
+  }, { r: 8, bias: 0.08, cast: 0.3 });
+  s.light(-0.32, (b) => b.poly([[hx + 5, hy + 2], [hx + 14, hy - 4], [hx + 14, hy + 20], [hx + 1, hy + 19], [hx + 7, hy + 10]], 1));
+  vesperFace(s, hx, hy, p2);
+  // front lock of the A-line bob: longer at the front, cut at an angle below the jaw
+  s.part(HAIR_V, (b) => b.poly([[hx - 17, hy - 6], [hx - 10, hy - 6], [hx - 9, hy + 12], [hx - 12, hy + 19], [hx - 18, hy + 15]], 1), { r: 4, bias: 0.04, cast: 0.25 });
+  s.paint((b) => { b.line(hx - 14, hy - 4, hx - 15, hy + 14, C.steel); b.line(hx - 11, hy - 2, hx - 11, hy + 14, C.fog); });
+  // --- fringe: long and straight, swept over the front of the face
+  s.part(HAIR_V, (b) => b.poly([
+    [hx - 18, hy + 2], [hx - 15, hy - 14], [hx - 4, hy - 21], [hx + 10, hy - 19], [hx + 18, hy - 10],
+    [hx + 14, hy - 6], [hx + 6, hy - 8], [hx - 2, hy - 6], [hx - 9, hy - 4], [hx - 13, hy + 4],
+  ], 1), { r: 6, bias: 0.06, cast: 0.25 });
+  s.paint((b) => {
+    b.line(hx - 12, hy - 13, hx - 3, hy - 19, C.white); b.line(hx - 11, hy - 12, hx - 2, hy - 18, C.white);
+    b.line(hx + 4, hy - 17, hx + 10, hy - 15, C.pale);
+    b.line(hx - 14, hy - 2, hx - 8, hy - 8, C.steel); b.line(hx + 2, hy - 9, hx + 10, hy - 12, C.steel);
+  });
+  return s.resolve((b) => {
+    if (p2) {
+      // torn coat: notches out of the silhouette and a slash across the front showing the red lining
+      for (const [x, y, w] of [[22, 116, 4], [21, 132, 5], [96, 128, 3]] as const) b.poly([[x - 1, y - w], [x + w, y], [x - 1, y + w]], 0);
+      b.line(30, 112, 46, 124, C.ink); b.line(31, 114, 45, 125, C.maroon); b.line(33, 116, 43, 124, C.red);
+      // sparks off the barrel and the broken visor
+      for (const [x, y] of [[104, 20], [98, 36], [108, 12], [46, 36]] as Pt[]) { b.set(x, y, C.amber); b.set(x + 1, y - 1, C.white); }
+    }
+  });
+}
+
+function vesperFace(s: Stage, hx: number, hy: number, p2: boolean): void {
+  const lg = legend({ d: C.skinD, m: C.skinM, x: C.skinX, R: C.red, r: C.rose, M: C.maroon, P: C.pale });
+  const vy = hy + 2;
+  // P2: the near half of the visor is broken off
+  const visorClip = p2 ? s.mask((b) => { b.rect(0, 0, hx - 4, H, 1); b.rect(hx + 6, 0, W, H, 1); }) : undefined;
+  // visor band wrapping from the front of the face round to the ear module
+  s.paint((b) => {
+    b.poly([[hx - 14, vy], [hx + 13, vy - 2], [hx + 13, vy + 4], [hx - 13, vy + 5]], C.red);
+    b.line(hx - 14, vy, hx + 12, vy - 2, C.rose);
+    b.line(hx - 13, vy + 5, hx + 12, vy + 4, C.maroon);
+    b.hline(hx - 11, hx - 6, vy + 1, C.rose);
+    b.set(hx - 10, vy, C.white); b.set(hx - 9, vy, C.white);
+  }, visorClip);
+  // ear module holding the visor
+  s.part(GUN_V, (b) => b.ellipse(hx + 10, vy + 3, 3.5, 4.5, 1), { r: 2, cast: 0.2, bias: 0.1 });
+  s.paint((b) => { b.set(hx + 10, vy + 3, C.red); b.set(hx + 10, vy + 2, C.rose); });
+  if (p2) {
+    // one cold eye shows through the gap, red iris; crack lines through the rest of the visor
+    s.grid(`
+      kkkkkkk
+      kPRrPPk
+      .kdddk.`, lg, hx - 3, vy + 1);
+    s.paint((b) => {
+      b.line(hx - 4, vy - 1, hx - 6, vy + 5, C.ink); b.line(hx - 9, vy + 4, hx - 7, vy, C.ink);
+      b.line(hx + 6, vy - 1, hx + 7, vy + 4, C.ink);
+      b.line(hx - 3, vy - 3, hx + 5, vy - 3, C.steel);
+    });
+  }
+  // nose, cheek, mouth: cold, a thin straight line
+  s.paint((b) => {
+    b.set(hx - 10, hy + 6, C.skinM); b.set(hx - 10, hy + 7, C.skinD); b.set(hx - 9, hy + 8, C.skinD);
+    b.hline(hx - 8, hx - 4, hy + 13, p2 ? C.skinX : C.skinD); b.set(hx - 8, hy + 13, C.skinX);
+    if (p2) { b.set(hx - 10, hy + 12, C.skinX); b.set(hx - 3, hy + 14, C.red); }
+  });
+}
+
 // ------------------------------------------------------------------ registry
 
 export function buildStandeeArt(): SheetSpec[] {
@@ -1345,6 +1516,8 @@ export function buildStandeeArt(): SheetSpec[] {
     { name: 'octohydra_p2', buf: octohydra(true) },
     { name: 'kade', buf: kade(false) },
     { name: 'kade_p2', buf: kade(true) },
+    { name: 'vesper', buf: vesper(false) },
+    { name: 'vesper_p2', buf: vesper(true) },
   ];
   return [{
     key: 'standee', group: 'Standees', frameW: W, frameH: H, columns: 6, frames,
