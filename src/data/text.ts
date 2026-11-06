@@ -70,7 +70,7 @@ export const MOD_TEXT: Record<ModId, { name: string; desc: string }> = {
 };
 
 export const BOSS_TEXT: Record<BossId, { name: string; en: string; place: string }> = {
-  gearjaw: { name: '齿颚', en: 'GEARJAW', place: '锈港 · 回收场' },
+  gearjaw: { name: '齿颚', en: 'GEARJAW', place: '锈港 · 压实场' },
   lux: { name: '卢克丝夫人', en: 'MADAME LUX', place: '霓虹集市 · 夜店舞台' },
   octohydra: { name: '八头蛇', en: 'OCTOHYDRA', place: '下网 · 淹水机房' },
   kade: { name: '凯德主管', en: 'DIRECTOR KADE', place: 'Skyline 区 · 天台停机坪' },

@@ -8,6 +8,7 @@ import { hash2 } from './core/rng';
 import type { SheetSpec } from './core/sheet';
 import { autotileWalls } from './tiles/autotile';
 import { buildJunkyard } from './tiles/junkyard';
+import { YARD, yardMask } from '../game/arenas/scrapyard';
 
 export const BG_W = 640;
 export const BG_H = 360;
@@ -40,14 +41,12 @@ function tiled(spec: SheetSpec, isWall: (x: number, y: number) => boolean, floor
 function scrapyard(): PixBuf {
   const spec = buildJunkyard();
   const T = tilesOf(spec);
-  // walls: two rows of wall top + one face row at the top, one column each side, two rows at the bottom
-  const isWall = (x: number, y: number) => y <= 2 || y >= 21 || x === 0 || x === 39;
-  const b = tiled(spec, isWall, (x, y) => {
+  // walls from the shared mask: border plus the stepped scrap heaps in the corners
+  const b = tiled(spec, yardMask, (x, y) => {
     const h = hash2(x, y, 5);
-    if (x >= 16 && x <= 23 && y >= 9 && y <= 13) return 'floor_plate';
     return `floor_${Math.floor(h * 4)}`;
   });
-  // scrap heaps and tyres on the wall tops for silhouette variety
+  // scrap heaps and tyres on the wall tops and piled into the corners
   for (let i = 0; i < 26; i++) {
     const x = Math.floor(hash2(i, 1, 7) * 38) + 1;
     const top = hash2(i, 2, 7) < 0.6;
@@ -55,17 +54,28 @@ function scrapyard(): PixBuf {
     const t = T(hash2(i, 3, 7) < 0.5 ? 'scrap_big' : hash2(i, 4, 7) < 0.5 ? 'scrap_small' : 'tires');
     b.blit(t, x * 16, y * 16 - (top ? 2 : 0));
   }
-  // gantry rails on the side walls
-  for (let y = 40; y < 336; y++) {
-    for (const x of [6, 9, 630, 633]) b.set(x, y, y % 8 === 0 ? C.ink : C.steel);
+  for (const [cx, cy] of [[1, 3], [2, 3], [3, 3], [1, 4], [36, 3], [37, 3], [38, 3], [38, 4], [1, 19], [2, 20], [3, 20], [37, 20], [36, 20], [38, 19]] as [number, number][]) {
+    const t = T(hash2(cx, cy, 8) < 0.5 ? 'scrap_big' : 'tires');
+    b.blit(t, cx * 16, cy * 16 - 4);
   }
-  // painted lines: a faded hazard circle in the middle and drop markers
-  for (let a = 0; a < Math.PI * 2; a += 0.01) {
-    const x = Math.round(320 + Math.cos(a) * 64), y = Math.round(200 + Math.sin(a) * 40);
-    if (Math.floor(a * 12) % 2 === 0 && hash2(x, y, 3) < 0.75) b.set(x, y, C.rust);
+  // hydraulic rams behind the compactor plates on both side walls
+  const { y0, y1 } = YARD.plates;
+  for (let y = y0; y < y1; y += 24) {
+    for (const x of [4, 628]) { b.rect(x, y + 6, 8, 4, C.slate); b.hline(x, x + 7, y + 6, C.fog); b.hline(x, x + 7, y + 9, C.ink); }
   }
-  for (let x = 24; x < 616; x++) {
-    if ((x >> 3) % 2 === 0 && hash2(x, 1, 9) < 0.8) { b.set(x, 330, C.umber); b.set(x, 331, C.umber); }
+  // the drop line: yellow/black paint down the crane rail, with end markers
+  const { x: rx, y0: ry0, y1: ry1 } = YARD.rail;
+  for (let y = ry0 - 8; y <= ry1 + 8; y++) {
+    if (hash2(rx, y, 3) > 0.85) continue;
+    const c = (y >> 3) % 2 === 0 ? C.sodium : C.ink;
+    for (const x of [rx - 2, rx - 1, rx + 1, rx + 2]) b.set(x, y, c);
+  }
+  for (const y of [ry0 - 10, ry1 + 10]) b.hline(rx - 10, rx + 10, y, C.sodium);
+  // faded lane paint along the three ram lanes
+  for (const ly of [84, 200, 306]) {
+    for (let x = 40; x < 600; x++) {
+      if ((x >> 4) % 2 === 0 && Math.abs(x - rx) > 14 && hash2(x, ly, 9) < 0.7) b.set(x, ly, C.umber);
+    }
   }
   return b;
 }

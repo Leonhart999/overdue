@@ -5,10 +5,10 @@ import type { BossDef } from './registry';
 export const gearjawDef: BossDef = {
   id: 'gearjaw',
   arena: scrapyard,
-  spawn: { x: 320, y: 168 },
-  make: (w, tier) => new Gearjaw(w, tier, 320, 168),
+  spawn: { x: 320, y: 196 },
+  make: (w, tier) => new Gearjaw(w, tier, 320, 196),
   drop: 'arm_fist',
-  hint: '墙边拉杆让吊车砸下 · 油桶会爆炸 · 引它撞钢柱 · 正面有装甲，打背后',
+  hint: '吊车只砸中线 · 引它撞中线上的钢柱 · 废车堆会被撞散 · 正面有装甲，打背后',
   portrait: { key: 'portraits', frame: 'gearjaw_angry' },
   music: {
     bpm: 132,

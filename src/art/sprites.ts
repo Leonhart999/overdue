@@ -5,6 +5,7 @@
  *   props   16x24  barrel, barrel_lit, lever_up, lever_down (origin bottom centre)
  *   pillar  16x40  steel column
  *   block   32x32  scrap_block, trolley
+ *   stack   48x48  car_stack, car_stack_dent, car_rubble (48x32 footprint, origin bottom centre)
  *   hud     10x10  heart, heart_empty, shield, nail, shell, shell_empty
  *   cursor  13x13  crosshair
  */
@@ -273,6 +274,56 @@ function scrapBlock(): PixBuf {
   });
 }
 
+/**
+ * Stack of crushed cars in 3/4 view: a 48x32 top face over a 16 px front face of two squashed
+ * car bodies. `dent` knocks the top car askew and adds dark gaps.
+ */
+function carStack(dent: boolean): PixBuf {
+  return frame(48, 48, (b) => {
+    // top face: the upper car seen from above, nose to the left
+    const ox = dent ? 2 : 0;
+    b.rect(1, 4, 46, 28, C.umber); // scrap bed under it
+    for (let i = 0; i < 40; i++) {
+      const x = 1 + Math.floor(hash2(i, 21) * 44), y = 4 + Math.floor(hash2(i, 22) * 27);
+      b.hline(x, Math.min(46, x + 1 + Math.floor(hash2(i, 23) * 4)), y, [C.rust, C.slate, C.skinX][Math.floor(hash2(i, 24) * 3)]);
+    }
+    b.rect(3 + ox, 7, 42, 22, C.teal); // body
+    b.rect(5 + ox, 7, 3, 22, C.abyss); // front bumper shadow
+    b.rect(15 + ox, 9, 18, 18, C.ice); // roof
+    b.rect(16 + ox, 10, 16, 16, C.teal);
+    b.rect(12 + ox, 9, 3, 18, C.abyss); b.rect(33 + ox, 9, 3, 18, C.abyss); // windscreens
+    b.line(18 + ox, 12, 26 + ox, 20, C.abyss); // roof crease
+    b.line(38 + ox, 9, 43 + ox, 15, C.ink);
+    b.set(4 + ox, 9, C.amber); b.set(4 + ox, 26, C.amber); // headlights
+    // front face: the side of the upper car over a squashed red one
+    b.rect(2, 32, 44, 7, C.teal);
+    b.hline(2, 45, 32, C.ice);
+    b.vline(18, 33, 38, C.abyss); b.vline(30, 33, 38, C.abyss); // door seams
+    b.rect(1, 39, 46, 8, C.maroon);
+    b.rect(3, 40, 42, 3, C.red);
+    b.hline(1, 46, 39, C.ink);
+    for (const [x, y] of [[9, 38], [39, 38], [7, 46], [41, 46]] as [number, number][]) { b.circle(x, y, 2.5, C.ink); b.circle(x, y, 1, C.slate); }
+    if (dent) {
+      b.line(6, 33, 14, 38, C.ink); b.line(24, 40, 34, 46, C.ink);
+      b.rect(26, 12 , 5, 3, C.ink);
+      b.vline(20, 7, 28, C.abyss);
+    }
+    b.outline(C.ink);
+  });
+}
+
+/** Flattened cars on the floor after a stack collapses (bottom 18 px of the frame). */
+function carRubble(): PixBuf {
+  return frame(48, 48, (b) => {
+    for (let i = 0; i < 26; i++) {
+      const x = 2 + Math.floor(hash2(i, 41) * 40), y = 32 + Math.floor(hash2(i, 42) * 14);
+      const w = 3 + Math.floor(hash2(i, 43) * 8);
+      b.rect(x, y, w, 2, [C.red, C.teal, C.navy, C.rust, C.umber, C.slate][Math.floor(hash2(i, 44) * 6)]);
+    }
+    b.outline(C.ink);
+  });
+}
+
 function trolley(): PixBuf {
   return frame(32, 32, (b) => {
     b.rect(6, 22, 20, 8, C.slate);
@@ -366,6 +417,10 @@ export function buildSprites(): SheetSpec[] {
     },
     { key: 'pillar', group: 'Props', frameW: 16, frameH: 40, frames: [{ name: 'pillar', buf: pillar() }] },
     { key: 'block', group: 'Props', frameW: 32, frameH: 32, columns: 2, frames: [{ name: 'scrap_block', buf: scrapBlock() }, { name: 'trolley', buf: trolley() }] },
+    {
+      key: 'stack', group: 'Props', frameW: 48, frameH: 48, columns: 3,
+      frames: [{ name: 'car_stack', buf: carStack(false) }, { name: 'car_stack_dent', buf: carStack(true) }, { name: 'car_rubble', buf: carRubble() }],
+    },
     { key: 'hud', group: 'HUD', frameW: 10, frameH: 10, columns: 6, frames: hudFrames() },
     { key: 'cursor', group: 'HUD', frameW: 11, frameH: 11, frames: [{ name: 'cursor', buf: cursor() }] },
   ];

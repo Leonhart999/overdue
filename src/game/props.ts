@@ -1,5 +1,6 @@
 /** Reusable arena props. Arena-specific devices live next to their arena. */
 import { COL, P, type Gfx } from '../engine/gfx';
+import type { Rect } from '../engine/math';
 import { Body, integrateProp } from './body';
 import type { Hit } from './types';
 import type { World } from './world';
@@ -150,4 +151,63 @@ export class Lever extends Body {
     const pulse = 0.25 + 0.15 * Math.sin(w.realTime * 5);
     g.circle(this.x, this.y - 10, 9, COL.interact, pulse * 0.6, 'light');
   }
+}
+
+/**
+ * Destructible cover (a stack of crushed cars). While standing it is a wall rect in `w.walls`,
+ * so it blocks movement, bullets, hooks and the ram lane like any wall. Three blasts, a crane
+ * drop or a ram (the arena calls `collapse`) knock it down and leave flat rubble.
+ * (x, y) is the centre of the footprint.
+ */
+export class CarStack extends Body {
+  hits = 3;
+  readonly wall: Rect;
+  constructor(x: number, y: number, readonly fw = 48, readonly fh = 32) {
+    super();
+    this.x = x; this.y = y;
+    this.r = 20; this.hz = 0; this.hr = 20;
+    this.mass = 0;
+    this.targetable = false;
+    this.wall = { x: x - fw / 2, y: y - fh / 2, w: fw, h: fh };
+  }
+
+  /** Put the wall into the world (call once after `w.add`). */
+  attach(w: World): this {
+    w.walls.push(this.wall);
+    return this;
+  }
+
+  update(_w: World, dt: number): void { if (this.flash > 0) this.flash -= dt; }
+
+  hurt(w: World, h: Hit): number {
+    if (h.kind !== 'blast' && h.kind !== 'crush') return 0;
+    this.flash = 0.08;
+    this.hits -= h.kind === 'crush' ? 3 : 1;
+    w.fx.debris(this.x, this.y - 10, 5, [P.rust, P.umber, P.slate], 90);
+    if (this.hits <= 0) this.collapse(w);
+    return 0;
+  }
+
+  collapse(w: World): void {
+    if (this.dead) return;
+    this.dead = true;
+    w.walls = w.walls.filter((r) => r !== this.wall);
+    w.objects.push(new Rubble(this.x, this.y + this.fh / 2));
+    w.fx.debris(this.x, this.y - 12, 22, [P.rust, P.umber, P.slate, P.steel, P.orange], 200);
+    w.fx.smoke(this.x, this.y, 10, P.umber, 7, 15);
+    w.fx.shake(4, 0.2);
+    w.sfx('crash');
+  }
+
+  draw(g: Gfx): void {
+    g.img('stack', this.hits < 3 ? 'car_stack_dent' : 'car_stack', this.x, this.y + this.fh / 2, { fill: this.flash > 0 ? P.white : undefined });
+  }
+}
+
+/** Flattened cars left on the floor after a CarStack collapses (decal only). */
+class Rubble {
+  dead = false;
+  constructor(private x: number, private y: number) {}
+  update(): void {}
+  draw(g: Gfx): void { g.img('stack', 'car_rubble', this.x, this.y, { layer: 'floor' }); }
 }

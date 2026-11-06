@@ -17,6 +17,8 @@ Reference implementation: `src/game/bosses/gearjaw.ts` + `src/game/arenas/scrapy
 - 640x360, fixed 60 Hz steps. `(x, y)` is the ground point; hurt circles sit at `(x, y - hz)` radius `hr`.
 - `World` holds `bodies` (props, boss parts), `bullets`, `hazards`, `zones` (oil/water/acid floor), `cables` (cuttable by the blade), `objects` (anything with `update/draw/drawTop`).
 - Arena `bounds` is the playable rectangle; `World` adds boundary walls around it. Extra wall rects can be pushed into `w.walls` in `setup`.
+- Non-rectangular outlines: write one `TileMask` (40x23 tiles, `src/game/arenaMask.ts`) and use it twice, for the background (`tiled(spec, mask, ...)` in the art) and for collision (`maskWalls(mask, bounds)` pushed into `w.walls`). See `yardMask` in `scrapyard.ts`.
+- Destructible cover: `CarStack` (props.ts) is a wall rect while standing; blasts, crushes or the arena (`collapse`) remove it.
 - Query helpers: `w.target()` (player or decoy), `w.raycast`, `w.rayWall`, `w.bodiesInCircle`, `w.moveCircle`, `w.explode`, `w.clearBullets`, `w.hitPlayer`, `w.damage`.
 
 ## Boss class

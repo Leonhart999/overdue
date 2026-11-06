@@ -6,15 +6,17 @@
  * P2 stripped  : armour gone, faster; adds overheat vent (punish window), hook sweep, double ram.
  * P3 overload  : ram leaves burning oil, spray adds rings; the crane resupplies barrels (arena).
  *
- * Arena interplay: rams stop on pillars / scrap blocks (stagger), rams detonate barrels, the hook
- * drags barrels back to him (and they explode on him if lit), a hook stuck in a wall leaves a
- * cable the blade can cut.
+ * Arena interplay: rams stop on pillars / scrap blocks (stagger), knock car stacks down, get
+ * pinned 2 s by the P3 compactor plates; rams detonate barrels; the hook drags barrels back to him
+ * (and they explode on him if lit); a hook stuck in a wall leaves a cable the blade can cut.
+ * The armour blowing off (P2) topples the two car stacks nearest to him.
  */
 import { COL, P, type Gfx } from '../../engine/gfx';
 import { angleTo, clamp, dist, norm, sign } from '../../engine/math';
 import type { Script } from '../../engine/script';
 import type { Body } from '../body';
 import { Boss, BossPart, type HitTag } from '../boss';
+import { yardOf } from '../arenas/scrapyard';
 import { FirePatch } from '../hazard';
 import type { Cable, Hit } from '../types';
 import type { World } from '../world';
@@ -323,6 +325,7 @@ export class Gearjaw extends Boss {
         yield* this.wait(0.25);
       }
       w.fx.debris(this.x, this.y - 40, 24, [P.rust, P.orange, P.amber, P.slate], 220);
+      yardOf(w)?.topple(w, this.x, this.y, 2);
     } else {
       w.fx.label(this.x, this.y - 72, '过载', P.red, 1.4);
       w.sfx('rev');
@@ -440,9 +443,12 @@ export class Gearjaw extends Boss {
         w.fx.shake(6, 0.25);
         w.sfx('crash');
         w.fx.debris(this.x + dx * 30, this.y - 20, 10, [P.rust, P.umber, P.slate]);
+        // car stacks fall over; a compactor plate pins him for 2 s and ends the ram chain
+        const hold = yardOf(w)?.onRamWall(w, this.x, this.y, this.body.r) ?? 0;
         this.anim = 'hurt';
-        yield* this.wait(this.tele(i === count - 1 ? 1.0 : 0.35));
+        yield* this.wait(hold > 0 ? hold : this.tele(i === count - 1 ? 1.0 : 0.35));
         this.anim = 'idle';
+        if (hold > 0) break;
       }
     }
     yield* this.wait(this.tele(0.3));

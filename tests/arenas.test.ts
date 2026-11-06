@@ -4,7 +4,8 @@ import { emptyInput } from '../src/engine/input';
 import { BOSS_DEFS } from '../src/game/bosses';
 import { newLoadout, type BossId } from '../src/game/loadout';
 import { Player } from '../src/game/player';
-import { Lever } from '../src/game/props';
+import { yardOf } from '../src/game/arenas/scrapyard';
+import { CarStack, Lever } from '../src/game/props';
 import { World } from '../src/game/world';
 
 function fight(boss: BossId, seed = 1) {
@@ -35,6 +36,44 @@ describe('arena interactions', () => {
     expect(b.hp).toBeLessThan(b.maxHp - 300);
     expect(b.staggered || b.inTransition || b.phase > 0).toBe(true);
     run(0.1);
+  });
+
+  it('gearjaw: corner heaps and car stacks are walls; a ram crash knocks a stack down', () => {
+    const { w } = fight('gearjaw');
+    expect(w.pointInWall(24, 56)).toBe(true); // top-left scrap heap
+    expect(w.pointInWall(600, 328)).toBe(true); // bottom-right scrap heap
+    const stack = w.bodies.find((b) => b instanceof CarStack) as CarStack;
+    expect(w.pointInWall(stack.x, stack.y)).toBe(true);
+    const hold = yardOf(w)!.onRamWall(w, stack.x + stack.fw / 2 + 26, stack.y, 26);
+    expect(hold).toBe(0);
+    expect(stack.dead).toBe(true);
+    expect(w.pointInWall(stack.x, stack.y)).toBe(false);
+  });
+
+  it('gearjaw: three blasts knock a car stack down', () => {
+    const { w } = fight('gearjaw');
+    const stack = w.bodies.find((b) => b instanceof CarStack) as CarStack;
+    for (let i = 0; i < 3; i++) w.explode(stack.x, stack.y - 20, 30, { enemyDmg: 0, from: 'player', src: 'test' });
+    expect(stack.dead).toBe(true);
+  });
+
+  it('gearjaw: P3 plates push in; a pinned boss takes the slam', () => {
+    const { w, run } = fight('gearjaw');
+    const b = w.boss!;
+    b.phase = 2;
+    run(4);
+    const c = yardOf(w)!.compactor;
+    expect(c.state).toBe('set');
+    expect(w.pointInWall(40, 200)).toBe(true);
+    const r = b.parts[0].r;
+    expect(c.pin(w, c.face(0) + r, 200, r)).toBe(2);
+    b.x = c.face(0) + r; b.y = 200;
+    for (const pt of b.parts) { pt.x = b.x; pt.y = b.y; }
+    const hp = b.hp;
+    const button = w.bodies.find((o) => o.constructor.name === 'PlateButton')!;
+    w.damage(button, { dmg: 5, kind: 'bullet', x: button.x, y: button.y, from: 'player', src: 'test' });
+    expect(hp - b.hp).toBeGreaterThanOrEqual(300);
+    expect(c.ready(0)).toBe(false);
   });
 
   it('lux: a breaker blacks out the stage and removes the clones', () => {
