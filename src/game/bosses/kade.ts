@@ -28,7 +28,7 @@ import type { Script } from '../../engine/script';
 import { Body } from '../body';
 import { Boss, BossPart, JAM_SLOW, type HitTag } from '../boss';
 import type { Hazard } from '../hazard';
-import { helipad, PAD, padOf, Turret, type PadState } from '../arenas/helipad';
+import { DOWNDRAFT_R, helipad, PAD, padOf, Turret, type PadState } from '../arenas/helipad';
 import type { Hit } from '../types';
 import type { World } from '../world';
 import type { BossDef } from './registry';
@@ -60,6 +60,8 @@ export class KadeDrone extends Body {
   private aim: Hazard | null = null;
   private aimA = 0;
   private bob = 0;
+  /** Entrance only: not drawn while the drones are inside the helicopter or still on his back. */
+  hidden = false;
   constructor(private kade: Kade, x: number, y: number, public slot: number) {
     super();
     this.x = x; this.y = y;
@@ -154,6 +156,7 @@ export class KadeDrone extends Body {
   }
 
   draw(g: Gfx, w: World): void {
+    if (this.hidden) return;
     g.ellipse(this.x, this.y, 6, 2.5, P.ink, 0.4, 'floor');
     const y = this.y - 14 + Math.sin(this.bob * 5) * 1.5;
     g.img('kade_drone', Math.floor(w.realTime * 20) % 2 ? 'a' : 'b', this.x, y, { depth: this.y, fill: this.flash > 0 ? P.white : undefined, flipX: this.vx < 0 });
@@ -206,6 +209,15 @@ export class Kade extends Boss {
   private strafeCd = 6;
   private prevHp: number;
   private charging = false;
+  // entrance-only state (all at rest in the fight)
+  /** Height above the ground while dropping out of the helicopter. */
+  private introZ = 0;
+  /** Not drawn yet (still inside the helicopter). */
+  private introHide = false;
+  /** The front shield is not shown (powers on at the end of the entrance). */
+  private introNoShield = false;
+  /** The cinematic helicopter: purely visual, the arena's own helicopter is never touched. */
+  private introHeli: { gx: number; gy: number; alt: number; k: number; hx: number; hy: number; exit: number } | null = null;
 
   constructor(w: World, tier: number, x: number, y: number) {
     super(w, tier, x, y, BASE_HP);
@@ -499,6 +511,152 @@ export class Kade extends Boss {
         yield;
       }
     } finally { this.moveX = this.moveY = 0; }
+  }
+
+  // ------------------------------------------------------------------ entrance
+  /** Run `fn(progress)` every step for `dur` boss seconds; keeps the idle animation and the helicopter exit going. */
+  private *cineRun(dur: number, fn?: (k: number) => void): Script {
+    const t0 = this.clock;
+    let last = t0;
+    while (this.clock - t0 < dur) {
+      this.animClock += this.clock - last;
+      last = this.clock;
+      const H = this.introHeli;
+      if (H && H.exit >= 0) {
+        const f = clamp((this.clock - H.exit) / 1.1, 0, 1);
+        H.gx = H.hx - 280 * f * f;
+        H.gy = H.hy - 110 * f * f;
+        H.k = Math.max(0, 1 - f * 3);
+      }
+      fn?.(clamp((this.clock - t0) / dur, 0, 1));
+      yield;
+    }
+  }
+
+  /**
+   * A helicopter flies in with its downdraft, Kade drops out of it, lands with a shockwave, the
+   * front shield flickers on and the escort drones launch from his back. Visual only: the arena's
+   * helicopter state is never touched, nothing here can hurt anyone.
+   */
+  *entrance(w: World): Script {
+    const sx = this.x, sy = this.y;
+    const drones = this.liveDrones();
+    const backX = sx - Math.cos(this.face) * 16, backY = sy - Math.sin(this.face) * 10;
+    const ease = (k: number) => 1 - (1 - k) * (1 - k);
+    const rng = w.vrng;
+    const HX = sx, HY = sy + 2, ALT = 76, FALL = 60;
+    try {
+      this.introHide = true;
+      this.introNoShield = true;
+      this.anim = 'idle';
+      for (const d of drones) d.hidden = true;
+      this.introHeli = { gx: HX + 240, gy: 40, alt: ALT, k: 0, hx: HX, hy: HY, exit: -1 };
+      // 1. the helicopter flies in from the top right; the downdraft builds under it
+      w.sfx('rev', 0.7, 1.2);
+      yield* this.cineRun(0.95, (k) => {
+        const H = this.introHeli!, e = ease(k);
+        H.gx = HX + 240 * (1 - e);
+        H.gy = 40 + (HY - 40) * e;
+        H.k = Math.max(0, (k - 0.55) / 0.45) * 0.9;
+        if (k > 0.6 && rng.chance(0.6)) {
+          const a = rng.next() * Math.PI * 2;
+          w.fx.smoke(HX + Math.cos(a) * 52, HY + Math.sin(a) * 40, 1, P.fog, 3, 6);
+        }
+      });
+      this.introHeli!.k = 1;
+      // 2. hatch opens: Kade drops out
+      w.sfx('click', 0.8, 0.8);
+      w.fx.sparks(HX, HY - ALT + 14, 10, P.amber, 100);
+      this.introHide = false;
+      this.introZ = FALL;
+      this.anim = 'leap';
+      w.sfx('spray', 0.5, 1.6);
+      yield* this.cineRun(0.3, (k) => {
+        this.introZ = FALL * (1 - k * k);
+        if (rng.chance(0.5)) w.fx.burst(sx + rng.range(-4, 4), sy + 4 - this.introZ - 20, 1, P.pale, 30, 0.3, 1);
+      });
+      // 3. landing: shockwave, dust, shake; the helicopter peels off
+      this.introZ = 0;
+      this.anim = 'bash';
+      w.sfx('crush', 0.9, 0.9);
+      w.sfx('land', 0.8);
+      w.fx.shake(8, 0.4);
+      w.hitstop = Math.max(w.hitstop, 0.06);
+      w.fx.ring(sx, sy, 10, 110, P.amber, 0.45, 3);
+      w.fx.ring(sx, sy, 6, 70, P.white, 0.28, 2);
+      w.fx.smoke(sx, sy, 14, P.slate, 7, 14);
+      w.fx.debris(sx, sy - 6, 18, [P.slate, P.steel, P.pale, P.white], 220);
+      this.introHeli!.exit = this.clock;
+      yield* this.cineRun(0.3);
+      // 4. the front energy shield powers on (flicker, then solid)
+      this.anim = 'idle';
+      w.sfx('charge', 0.6, 1.4);
+      w.fx.glow(sx, sy - CHEST, 24, P.amber, 0.3);
+      yield* this.cineRun(0.5, (k) => {
+        this.introNoShield = k < 0.8 && Math.floor(this.clock * 28) % 2 === 0;
+        if (rng.chance(0.4)) w.fx.sparks(sx + Math.cos(this.face) * 20, sy - CHEST + 4 + Math.sin(this.face) * 14, 1, P.amber, 70);
+      });
+      this.introNoShield = false;
+      w.sfx('armor', 0.5, 1.4);
+      // 5. the drones launch from his back
+      w.sfx('click', 0.8, 1.3);
+      w.sfx('spray', 0.4, 1.5);
+      for (const d of drones) {
+        d.hidden = false;
+        d.x = backX; d.y = backY;
+        d.vx = (d.slot % 2 ? 1 : -1) * 150;
+        d.vy = -90;
+        w.fx.sparks(backX, backY - 14, 8, P.pale, 110);
+        w.fx.smoke(backX, backY - 10, 3, P.slate, 3, 20);
+      }
+      yield* this.cineRun(0.2);
+      yield* this.cineRun(0.6);
+    } finally {
+      this.introHide = false;
+      this.introZ = 0;
+      this.introNoShield = false;
+      this.introHeli = null;
+      this.anim = 'idle';
+      this.x = sx; this.y = sy;
+      this.body.x = sx; this.body.y = sy;
+      for (const d of drones) {
+        if (!d.hidden) continue;
+        d.hidden = false;
+        d.x = backX; d.y = backY;
+        d.vx = 0; d.vy = 0;
+      }
+    }
+  }
+
+  /** Entrance props: the cinematic helicopter, its shadow and downdraft. Nothing here is drawn in the fight. */
+  private drawIntro(g: Gfx, w: World): void {
+    const H = this.introHeli;
+    if (!H) return;
+    const bx = H.gx, by = H.gy - H.alt;
+    g.ellipse(H.gx, H.gy + 4, 40, 16, P.ink, 0.35, 'floor');
+    if (H.k > 0) {
+      const R = DOWNDRAFT_R, k = H.k;
+      g.ellipse(H.gx, H.gy, R, R, P.pale, 0.08 * k, 'floor');
+      g.ring(H.gx, H.gy, R, 2, P.pale, 0.55 * k, 'floor');
+      const n = 18;
+      for (let i = 0; i < n; i++) {
+        const a = (i / n) * Math.PI * 2 + Math.sin(i * 7.1) * 0.2;
+        const ph = (w.realTime * 2.2 + i * 0.37) % 1;
+        const r0 = 12 + ph * (R - 16), r1 = r0 + 9;
+        g.line(H.gx + Math.cos(a) * r0, H.gy + Math.sin(a) * r0, H.gx + Math.cos(a) * r1, H.gy + Math.sin(a) * r1, 1, P.pale, 0.7 * k * (1 - ph * 0.6), 'floor');
+      }
+    }
+    g.img('kade_heli', 'body', bx, by, { layer: 'top', ox: 0.5, oy: 0.5 });
+    const ra = w.realTime * 30;
+    g.circle(bx, by, 34, P.pale, 0.05, 'top');
+    for (let i = 0; i < 2; i++) {
+      const a = ra + (i * Math.PI) / 2;
+      g.line(bx - Math.cos(a) * 36, by - Math.sin(a) * 36, bx + Math.cos(a) * 36, by + Math.sin(a) * 36, 2, P.ink, 0.45, 'top');
+    }
+    const blink = Math.floor(w.realTime * 3) % 2 === 0;
+    g.circle(bx - 14, by + 4, 3, P.red, blink ? 0.7 : 0.2, 'light');
+    g.circle(bx + 14, by + 4, 3, P.acid, blink ? 0.2 : 0.7, 'light');
+    g.circle(bx, by + 8, 7, P.amber, 0.35, 'light');
   }
 
   // ------------------------------------------------------------------ brain
@@ -899,6 +1057,8 @@ export class Kade extends Boss {
   // ------------------------------------------------------------------ draw
   draw(g: Gfx, w: World): void {
     const pad = this.pad;
+    this.drawIntro(g, w);
+    if (this.introHide) return;
     // bombardment warning: everything red except the downdraft circle
     if (this.clearT >= 0 && this.clearT < 3.5 && pad) {
       const b = w.bounds, S = 20;
@@ -916,10 +1076,10 @@ export class Kade extends Boss {
     }
 
     const ax = this.landAt ? this.landAt.x : this.x, ay = this.landAt ? this.landAt.y : this.y;
-    const sh = this.airborne ? clamp(1 - this.z / 260, 0.3, 1) : 1;
+    const sh = this.airborne ? clamp(1 - this.z / 260, 0.3, 1) : clamp(1 - this.introZ / 140, 0.3, 1);
     g.ellipse(ax, ay + 1, 18 * sh, 7 * sh, P.ink, 0.5, 'floor');
     // floor arc: which side the shield covers
-    if (this.shieldUp) g.sector(this.x, this.y, 30, this.face - SHIELD_HALF, this.face + SHIELD_HALF, P.amber, 0.14, 'floor', 20);
+    if (this.shieldUp && !this.introNoShield) g.sector(this.x, this.y, 30, this.face - SHIELD_HALF, this.face + SHIELD_HALF, P.amber, 0.14, 'floor', 20);
 
     const key = this.shieldBroken ? 'kade_broken' : 'kade';
     let frame: string = this.anim === 'idle' ? (Math.floor(this.animClock * 2.5) % 2 ? 'idle2' : 'idle1') : this.anim;
@@ -928,13 +1088,13 @@ export class Kade extends Boss {
     const shakeX = this.charging ? w.rng.range(-1, 1) : 0;
     const flash = this.body.flash > 0;
     if (!this.airborne || this.z < 250) {
-      g.img(key, frame, this.x + shakeX, this.y + 4 - this.z, { flipX: this.flip, fill: flash ? P.pale : undefined, depth: this.y });
+      g.img(key, frame, this.x + shakeX, this.y + 4 - this.z - Math.round(this.introZ), { flipX: this.flip, fill: flash ? P.pale : undefined, depth: this.y });
     }
-    const hy = this.y - this.z;
+    const hy = this.y - this.z - this.introZ;
     // visor
     g.circle(this.x + (this.flip ? -4 : 4), hy - 38, 5, P.red, 0.35, 'light');
     // energy shield at chest height
-    if (this.shieldUp) {
+    if (this.shieldUp && !this.introNoShield) {
       const a0 = this.face - SHIELD_HALF, a1 = this.face + SHIELD_HALF;
       const hit = this.shieldHitT > 0;
       g.sector(this.x, hy - CHEST + 4, 24, a0, a1, hit ? P.white : P.pale, hit ? 0.45 : 0.2, 'top', 18);

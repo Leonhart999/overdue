@@ -134,6 +134,14 @@ export class Lux extends Boss implements StageListener {
   private lastPick = '';
   /** Seconds the real Lux has been off screen. */
   offT = 0;
+  // ------------------------------------------------------------------ entrance state
+  /** Entrance-only look, all at rest in the fight: hologram alpha, glitch offset, scanline (0..1, -1 = off), club darkness. */
+  private introAlpha = 1;
+  private introGlitch = 0;
+  private introScan = -1;
+  private introDark = 0;
+  private introBeams: { rx: number; gx: number; gy: number; c: number; a: number }[] = [];
+  private introHearts: { x: number; y: number; vx: number; age: number; life: number }[] = [];
 
   constructor(w: World, tier: number, x: number, y: number) {
     super(w, tier, x, y, BASE_HP);
@@ -323,6 +331,124 @@ export class Lux extends Boss implements StageListener {
       if (c.shotT > 0) continue;
       c.shotT = every;
       this.shoot(c.x, c.y - CHEST, this.aimFrom(c.x, c.y - CHEST), 105, HEART);
+    }
+  }
+
+  // ------------------------------------------------------------------ entrance
+  /** Run `fn(progress, dt)` every step for `dur` boss seconds (keeps the idle bob and the hearts moving). */
+  private *cineRun(dur: number, fn: (k: number, dt: number) => void): Script {
+    const t0 = this.clock;
+    let last = t0;
+    while (this.clock - t0 < dur) {
+      const dt = this.clock - last;
+      last = this.clock;
+      this.animClock += dt;
+      for (const h of this.introHearts) { h.age += dt; h.y -= 22 * dt; h.x += h.vx * dt; }
+      this.introHearts = this.introHearts.filter((h) => h.age < h.life);
+      fn(clamp((this.clock - t0) / dur, 0, 1), dt);
+      yield;
+    }
+  }
+
+  /**
+   * Lights cut out, two spotlights sweep in and converge on the stage, she glitches in as a
+   * hologram (ghost copies blink on and off around her), materialises with a magenta ring burst
+   * and blows a kiss. Visual only: no clones, no hazards, the stage is not touched.
+   */
+  *entrance(w: World): Script {
+    const sx = this.x, sy = this.y, face = this.facing, cy = sy - CHEST;
+    const ease = (k: number) => 1 - (1 - k) * (1 - k);
+    const rng = w.vrng;
+    try {
+      this.anim = 'idle';
+      this.introAlpha = 0;
+      // 1. the club lights cut out
+      w.sfx('emp', 0.6, 0.6);
+      yield* this.cineRun(0.45, (k) => { this.introDark = 0.82 * k; });
+      w.sfx('click', 0.7, 0.7);
+      // 2. two spotlights sweep in from opposite ends of the stage
+      this.introBeams = [
+        { rx: 300, gx: 180, gy: 300, c: P.cyan, a: 0.5 },
+        { rx: 980, gx: 1100, gy: 300, c: P.magenta, a: 0.5 },
+      ];
+      w.sfx('beat', 0.7);
+      let ticked = false;
+      yield* this.cineRun(1.1, (k) => {
+        const e = ease(k);
+        const [a, b] = this.introBeams;
+        a.gx = 180 + (sx - 40 - 180) * e;
+        a.gy = 300 + (sy + 6 - 300) * e + Math.sin(k * 9) * 14 * (1 - k);
+        b.gx = 1100 + (sx + 40 - 1100) * e;
+        b.gy = 300 + (sy + 6 - 300) * e + Math.sin(k * 9 + 2) * 14 * (1 - k);
+        if (!ticked && k > 0.5) { ticked = true; w.sfx('telegraph', 0.4, 1.8); }
+      });
+      // 3. they converge on her mark
+      w.sfx('zap', 0.7, 0.8);
+      w.fx.glow(sx, cy, 34, P.white, 0.3);
+      yield* this.cineRun(0.25, (_k, dt) => {
+        for (const bm of this.introBeams) {
+          bm.gx += (sx - bm.gx) * Math.min(1, dt * 14);
+          bm.gy += (sy + 4 - bm.gy) * Math.min(1, dt * 14);
+        }
+        if (rng.chance(0.4)) w.fx.sparks(sx, sy - 2, 2, P.white, 60);
+      });
+      // 4. the hologram glitches in: flicker, colour split, scanline, ghost copies
+      this.anim = 'cast';
+      const ghosts: [number, number][] = [[-52, -8], [48, 6], [-26, 22], [30, -18], [-64, 14], [60, -6]];
+      let gi = 0, nextGhost = 0.05;
+      yield* this.cineRun(0.9, (k) => {
+        const flick = Math.floor(this.clock * 40) % 3 === 0;
+        this.introAlpha = k < 0.1 ? 0 : flick ? 0.15 : Math.min(1, 0.35 + k);
+        this.introGlitch = 5 * (1 - k);
+        this.introScan = (k * 2.2) % 1;
+        if (k >= nextGhost && gi < 8) {
+          nextGhost += 0.11;
+          const [ox, oy] = ghosts[gi % ghosts.length];
+          const c = gi % 2 ? P.cyan : P.magenta;
+          w.fx.ghost('lux', 'cast', sx + ox, sy - 4 + oy, { flipX: face < 0, fill: c, alpha: 0.55 }, 0.22);
+          w.fx.burst(sx + ox, cy + oy, 5, c, 50, 0.25, 1);
+          w.sfx('blink', 0.25, 1.3 + 0.1 * (gi % 3));
+          gi++;
+        }
+      });
+      // 5. she materialises: ring burst, bass hit, lights back on, a kiss with hearts
+      this.introAlpha = 1;
+      this.introGlitch = 0;
+      this.introScan = -1;
+      w.fx.ring(sx, cy, 6, 90, P.magenta, 0.5, 3);
+      w.fx.ring(sx, sy, 4, 56, P.cyan, 0.4, 2);
+      w.fx.burst(sx, cy, 14, P.magenta, 120, 0.4, 2);
+      w.fx.flash(P.magenta, 0.25, 0.14);
+      w.fx.shake(4, 0.3);
+      w.sfx('blink', 0.9, 0.9);
+      w.sfx('crush', 0.7, 0.5);
+      let kissed = false;
+      yield* this.cineRun(0.55, (k) => {
+        this.introDark = 0.82 * (1 - ease(k));
+        for (const bm of this.introBeams) bm.a = 0.5 * (1 - k);
+        if (!kissed && k > 0.3) {
+          kissed = true;
+          this.anim = 'kiss';
+          w.sfx('spray', 0.4, 1.6);
+          for (let i = 0; i < 10; i++) {
+            this.introHearts.push({ x: sx + rng.range(-26, 26), y: cy + rng.range(-14, 6), vx: rng.range(-10, 10), age: 0, life: rng.range(0.9, 1.4) });
+          }
+        }
+      });
+      this.introDark = 0;
+      this.introBeams = [];
+      yield* this.cineRun(0.7, () => {});
+    } finally {
+      this.introAlpha = 1;
+      this.introGlitch = 0;
+      this.introScan = -1;
+      this.introDark = 0;
+      this.introBeams = [];
+      this.introHearts = [];
+      this.anim = 'idle';
+      this.facing = face;
+      this.x = sx; this.y = sy;
+      this.body.x = sx; this.body.y = sy;
     }
   }
 
@@ -673,9 +799,9 @@ export class Lux extends Boss implements StageListener {
       if (clone.state === 'in') alpha = clamp(clone.t / 0.5, 0, 1) * 0.9;
       else if (clone.state === 'glitch') alpha = 1 - clone.t / 0.3;
       if (lit) alpha *= 0.45;
-    }
+    } else alpha *= this.introAlpha;
     const sy = y - 4 - bob;
-    const glitch = clone ? (clone.state === 'glitch' ? 4 : clone.flickering ? 2 : 0) : 0;
+    const glitch = clone ? (clone.state === 'glitch' ? 4 : clone.flickering ? 2 : 0) : this.introGlitch;
     if (glitch) {
       g.img('lux', fr, x - glitch, sy, { flipX: flip, alpha: alpha * 0.45, fill: P.cyan, depth: y - 0.1 });
       g.img('lux', fr, x + glitch, sy, { flipX: flip, alpha: alpha * 0.45, fill: P.magenta, depth: y - 0.1 });
@@ -689,6 +815,7 @@ export class Lux extends Boss implements StageListener {
   draw(g: Gfx, w: World): void {
     if (this.defeated) return;
     this.drawFigure(g, w, null);
+    this.drawIntro(g);
     if (this.encore) {
       const pulse = 0.5 + 0.5 * Math.sin(this.animClock * 8);
       g.ring(this.x, this.y, 18 + pulse * 4, 1, P.acid, 0.6, 'floor');
@@ -701,6 +828,36 @@ export class Lux extends Boss implements StageListener {
       }
     }
     this.drawLaser(g, w);
+  }
+
+  /** Entrance props: spotlight beams, scanline, hearts and the club darkness. Nothing here is drawn in the fight. */
+  private drawIntro(g: Gfx): void {
+    const holes: { x: number; y: number; r: number }[] = [];
+    for (const b of this.introBeams) {
+      const f = b.a / 0.5, r = 26;
+      if (f <= 0.02) continue;
+      g.poly([b.rx - 5, 26, b.rx + 5, 26, b.gx + r, b.gy, b.gx - r, b.gy], b.c, 0.2 * f, 'light');
+      g.circle(b.gx, b.gy - 4, r, b.c, 0.28 * f, 'light');
+      g.ellipse(b.gx, b.gy, r, r * 0.5, b.c, 0.2 * f, 'floor');
+      g.ring(b.gx, b.gy, r, 1, b.c, 0.7 * f, 'floor');
+      // the cone shows through the darkness as a chain of holes
+      for (let i = 0; i <= 8; i++) {
+        const t = i / 8;
+        holes.push({ x: b.rx + (b.gx - b.rx) * t, y: 26 + (b.gy - 6 - 26) * t, r: 10 + t * (r + 10) });
+      }
+    }
+    if (this.introAlpha > 0.1) holes.push({ x: this.x, y: this.y - CHEST, r: 34 });
+    if (this.introDark > 0.01) g.darkness(this.introDark, holes);
+    if (this.introScan >= 0) {
+      const sy = Math.round(this.y - 4 - this.introScan * 44);
+      g.rect(this.x - 14, sy, 28, 1, P.cyan, 0.9, 'top');
+      g.rect(this.x - 14, sy + 1, 28, 1, P.white, 0.4, 'top');
+    }
+    for (const h of this.introHearts) {
+      const a = Math.min(1, (h.life - h.age) * 2.5);
+      g.img('proj', 'heart', h.x, h.y, { layer: 'top', ox: 0.5, oy: 0.5, alpha: a });
+      g.circle(h.x, h.y, 6, P.magenta, 0.25 * a, 'light');
+    }
   }
 
   private drawLaser(g: Gfx, w: World): void {

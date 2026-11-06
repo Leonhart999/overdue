@@ -243,6 +243,19 @@ export class Vesper extends Boss implements TrainRider {
   private mines: VesperMine[] = [];
   private lastPick = '';
   private gapWait = false;
+  // entrance-only state (all at rest in the fight)
+  /** Height above the roof while dropping off the gantry. */
+  private introZ = 0;
+  /** Backflip angle while dropping (0 = upright). */
+  private introSpin = 0;
+  /** Not drawn yet (still up on the gantry). */
+  private introHide = false;
+  /** Camera focus x during the entrance (null = her). */
+  private introCam: number | null = null;
+  /** x of the gantry silhouette that passes over her (null = none). Visual only: the arena's gantry is never touched. */
+  private introGantry: number | null = null;
+  /** Her red laser sight during the entrance. Visual only: no hazard, no shot. */
+  private introLaser: { ex: number; ey: number; lock: boolean } | null = null;
 
   constructor(w: World, tier: number, x: number, y: number) {
     super(w, tier, x, y, BASE_HP);
@@ -604,6 +617,151 @@ export class Vesper extends Boss implements TrainRider {
     this.w.fx.smoke(this.x, this.y, 4, P.slate, 3, 8);
   }
 
+  // ------------------------------------------------------------------ entrance
+  introFocus(): { x: number; y: number } { return { x: this.introCam ?? this.x, y: this.y - 30 }; }
+
+  /** Run `fn(progress, dt)` every step for `dur` boss seconds (keeps the idle animation going). */
+  private *cineRun(dur: number, fn?: (k: number, dt: number) => void): Script {
+    const t0 = this.clock;
+    let last = t0;
+    while (this.clock - t0 < dur) {
+      const dt = this.clock - last;
+      last = this.clock;
+      this.animClock += dt;
+      fn?.(clamp((this.clock - t0) / dur, 0, 1), dt);
+      yield;
+    }
+  }
+
+  /** Turn the rifle toward a point (entrance laser sweep). */
+  private introAim(ex: number, ey: number): void {
+    const [px, py] = this.pivot();
+    this.face = Math.atan2(ey - py, ex - px);
+    const c = Math.cos(this.face);
+    if (c < -0.2) this.flip = true; else if (c > 0.2) this.flip = false;
+  }
+
+  /**
+   * The camera starts on her car. A gantry silhouette sweeps over from the front, she drops off it
+   * with a backflip and lands on the roof, brings the rifle up, her red laser sight sweeps back
+   * along the train and settles on the player, then she cocks the rifle. Visual only: no hazards,
+   * no shot, the arena's gantry and the train state are not touched.
+   */
+  *entrance(w: World): Script {
+    const sx = this.x, sy = this.y, p = w.player, rng = w.vrng, b = w.bounds;
+    const G0 = sx + 380, G1 = sx - 380, FALL = 0.5, DROP = 74;
+    try {
+      this.introHide = true;
+      this.anim = 'leap';
+      this.introCam = sx;
+      // 1. camera settles on her car; warning siren
+      w.sfx('siren', 0.5, 1.3);
+      yield* this.cineRun(0.4);
+      // 2. the gantry sweeps over; she drops off it with a backflip
+      w.sfx('rev', 0.8, 0.6);
+      let dropT = -1, landed = false;
+      yield* this.cineRun(1.4, (k) => {
+        const gx = G0 + (G1 - G0) * k;
+        this.introGantry = gx;
+        if (rng.chance(0.6)) w.fx.sparks(gx, b.y + rng.next() * b.h, 2, P.amber, 80);
+        if (dropT < 0 && gx <= sx + 30) {
+          dropT = this.clock;
+          this.introHide = false;
+          this.introZ = DROP;
+          w.sfx('leap', 0.8, 1.2);
+        }
+        if (dropT >= 0 && !landed) {
+          const f = clamp((this.clock - dropT) / FALL, 0, 1);
+          this.introZ = DROP * (1 - f * f) + Math.sin(Math.PI * f) * 10;
+          this.introSpin = -f * Math.PI * 2;
+          if (f >= 1) {
+            landed = true;
+            this.introZ = 0;
+            this.introSpin = 0;
+            this.anim = 'crouch';
+            w.sfx('land', 0.9, 1);
+            w.fx.shake(4, 0.25);
+            w.fx.ring(sx, sy, 4, 40, P.pale, 0.35, 2);
+            w.fx.smoke(sx, sy, 6, P.slate, 4, 10);
+            w.fx.debris(sx, sy - 4, 8, [P.slate, P.steel, P.pale], 120);
+          }
+        }
+      });
+      this.introGantry = null;
+      this.introZ = 0;
+      this.introSpin = 0;
+      this.introHide = false;
+      // 3. crouched on the roof
+      this.anim = 'crouch';
+      yield* this.cineRun(0.3);
+      // 4. rifle up: the laser sight sweeps back along the train toward the player
+      this.anim = 'aim';
+      w.sfx('reload', 0.6, 1);
+      w.sfx('laser', 0.4, 1.4);
+      this.introCam = (sx + p.x) / 2;
+      this.face = 0;
+      this.flip = false;
+      const L = { ex: sx + 260, ey: sy - 6, lock: false };
+      this.introLaser = L;
+      yield* this.cineRun(1.1, (k) => {
+        const e = k * k * (3 - 2 * k);
+        L.ex = sx + 260 + (p.x - (sx + 260)) * e;
+        L.ey = sy - 6 + (p.y - 9 - (sy - 6)) * e + Math.sin(k * 14) * 10 * (1 - e);
+        this.introAim(L.ex, L.ey);
+      });
+      // 5. it settles on the player for a moment (no shot)
+      L.lock = true;
+      w.sfx('telegraph', 0.6, 1.8);
+      yield* this.cineRun(0.45, () => {
+        L.ex = p.x; L.ey = p.y - 9;
+        this.introAim(L.ex, L.ey);
+      });
+      // 6. she cocks the rifle
+      w.sfx('reload', 0.8, 0.9);
+      w.sfx('click', 0.7, 0.7);
+      const [mx, my] = this.pivot();
+      w.fx.sparks(mx, my, 6, P.amber, 90);
+      w.fx.shake(2, 0.15);
+      this.introLaser = null;
+      yield* this.cineRun(0.35);
+    } finally {
+      this.introHide = false;
+      this.introZ = 0;
+      this.introSpin = 0;
+      this.introCam = null;
+      this.introGantry = null;
+      this.introLaser = null;
+      this.anim = 'idle1';
+      this.face = Math.PI;
+      this.flip = true;
+      this.x = sx; this.y = sy;
+      this.body.x = sx; this.body.y = sy;
+    }
+  }
+
+  /** Entrance props: the gantry silhouette and the laser sight. Nothing here is drawn in the fight. */
+  private drawIntro(g: Gfx, w: World): void {
+    const b = w.bounds;
+    const gx = this.introGantry;
+    if (gx !== null) {
+      g.rect(gx - 17, b.y, 34, b.h, P.ink, 0.5, 'floor');
+      g.rect(gx - 17, b.y, 34, b.h, P.rose, 0.22, 'floor');
+      g.rect(gx + 17, b.y - 16, 10, b.h + 32, P.ink, 0.3, 'floor');
+      g.img('train_gantry', 'beam', gx, b.y + b.h + TRAIN.side + 20, { layer: 'top' });
+      g.circle(gx, b.y - 26, 5, P.red, 0.6, 'light');
+      g.circle(gx, b.y + b.h + TRAIN.side + 10, 5, P.red, 0.6, 'light');
+    }
+    const L = this.introLaser;
+    if (L) {
+      const [mx, my] = this.muzzle(this.face);
+      const c = L.lock ? P.white : P.red;
+      g.line(mx, my, L.ex, L.ey, 4, P.red, 0.12, 'top');
+      g.line(mx, my, L.ex, L.ey, 1, c, L.lock ? 0.95 : 0.85, 'top');
+      g.circle(L.ex, L.ey, L.lock ? 5 : 3, c, 0.6, 'light');
+      g.circle(mx, my, 4, c, 0.5, 'light');
+    }
+  }
+
   // ------------------------------------------------------------------ brain
   *brain(w: World): Script {
     yield* this.wait(0.6);
@@ -842,6 +1000,8 @@ export class Vesper extends Boss implements TrainRider {
   // ------------------------------------------------------------------ draw
   draw(g: Gfx, w: World): void {
     const st = this.st;
+    this.drawIntro(g, w);
+    if (this.introHide) return;
     // landing marker: a white cross inside the red circle
     if (this.landAt) {
       const { x, y } = this.landAt;
@@ -849,7 +1009,7 @@ export class Vesper extends Boss implements TrainRider {
       g.line(x, y - 4, x, y + 4, 1, P.white, 0.8);
       st?.holes.push({ x, y, r: 22 });
     }
-    const sh = this.airborne ? clamp(1 - this.z / 120, 0.4, 1) : 1;
+    const sh = this.airborne ? clamp(1 - this.z / 120, 0.4, 1) : clamp(1 - this.introZ / 140, 0.4, 1);
     g.ellipse(this.x, this.y + 1, 9 * sh, 3.5 * sh, P.ink, 0.5, 'floor');
     let frame: string = this.anim;
     if (this.anim === 'idle1' || this.anim === 'idle2') frame = Math.floor(this.animClock * 2) % 2 ? 'idle2' : 'idle1';
@@ -857,14 +1017,15 @@ export class Vesper extends Boss implements TrainRider {
     if (this.airborne) frame = 'leap';
     if (this.gapWait && !this.staggered) frame = 'crouch';
     const flash = this.body.flash > 0;
-    const y = this.y - this.z;
+    const y = this.y - this.z - this.introZ;
     const rifle = (frame === 'aim' || frame === 'fire') && !this.airborne;
     const [px, py] = this.pivot();
     const ra = this.lasers.length ? this.aimOf(this.lasers[0]) : this.face;
     const back = Math.sin(ra) < -0.3;
     const drawRifle = () => g.img('vesper_rifle', frame === 'fire' ? 'fire' : 'rifle', px - Math.cos(ra) * (frame === 'fire' ? 2 : 0), py, { ox: 0.25, oy: 0.5, rot: ra, flipY: Math.cos(ra) < 0, depth: this.y + (back ? -0.3 : 0.3), fill: flash ? P.pale : undefined });
     if (rifle && back) drawRifle();
-    g.img('vesper', frame, this.x, y + 2, { flipX: this.flip, fill: flash ? P.pale : undefined, depth: this.y });
+    if (this.introSpin !== 0) g.img('vesper', 'leap', this.x, y - 16, { flipX: this.flip, ox: 0.5, oy: 0.5, rot: this.flip ? -this.introSpin : this.introSpin, depth: this.y });
+    else g.img('vesper', frame, this.x, y + 2, { flipX: this.flip, fill: flash ? P.pale : undefined, depth: this.y });
     if (rifle && !back) drawRifle();
     // visor glow
     g.circle(this.x + (this.flip ? -2 : 2), y - 33, 4, P.red, 0.35, 'light');

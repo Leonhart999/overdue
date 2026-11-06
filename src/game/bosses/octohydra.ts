@@ -253,6 +253,15 @@ export class Octohydra extends Boss {
   private lastPick = '';
   private moveX = 0;
   private moveY = 0;
+  // entrance-only state (all at rest in the fight)
+  /** Camera focus y during the entrance (null = the core). */
+  private introCam: number | null = null;
+  /** Core eye glow 0..1 (entrance only). */
+  private introEye = 0;
+  /** Visual-only heads shown by the entrance: never added to the world, so they cannot be hit. */
+  private introHeads: { h: Head; dive: boolean; roar: boolean }[] = [];
+  /** Water ripple per spot: start and burst time on the boss clock. */
+  private introRip: { t0: number; t1: number }[] = [];
 
   constructor(w: World, tier: number, x: number, y: number) {
     super(w, tier, x, y, CORE_HP);
@@ -708,6 +717,149 @@ export class Octohydra extends Boss {
     yield* this.wait(this.tele(0.3));
   }
 
+  // ------------------------------------------------------------------ entrance
+  introFocus(): { x: number; y: number } { return { x: this.x, y: this.introCam ?? this.y - 30 }; }
+
+  /** Run `fn(progress, dt)` every step for `dur` boss seconds, animating the entrance heads. */
+  private *cineRun(dur: number, fn?: (k: number, dt: number) => void): Script {
+    const t0 = this.clock;
+    let last = t0;
+    while (this.clock - t0 < dur) {
+      const dt = this.clock - last;
+      last = this.clock;
+      this.animClock += dt;
+      for (const e of this.introHeads) {
+        if (e.dive) {
+          e.h.rise = Math.max(0, e.h.rise - dt / 0.35);
+          e.h.hz = LIFT * e.h.rise;
+          e.h.x = e.h.spot.x; e.h.y = e.h.spot.y;
+        } else {
+          this.updateHead(this.w, e.h, dt);
+          if (e.roar) e.h.anim = 'attack';
+        }
+      }
+      this.introHeads = this.introHeads.filter((e) => !(e.dive && e.h.rise <= 0));
+      fn?.(clamp((this.clock - t0) / dur, 0, 1), dt);
+      yield;
+    }
+  }
+
+  /** A visual head bursts out of spot i (splash, shake). */
+  private introBurst(w: World, i: number): void {
+    const s = this.spots[i];
+    const h = new Head(this, s, this.headHp);
+    h.rise = 0;
+    h.hz = 0;
+    h.facing = sign(w.target().x - s.x) || 1;
+    this.introHeads.push({ h, dive: false, roar: false });
+    this.introRip[i].t1 = this.clock;
+    w.fx.burst(s.x, s.y - 4, 18, P.teal, 110, 0.55, 2, 0);
+    w.fx.burst(s.x, s.y - 6, 8, P.ice, 90, 0.4, 1, 0, -Math.PI / 2, 1.2);
+    w.fx.ring(s.x, s.y, 4, 34, P.ice, 0.4, 2);
+    w.fx.ring(s.x, s.y, 2, 20, P.white, 0.25, 1);
+    w.fx.shake(4, 0.2);
+    w.sfx('stomp', 0.6, 1.2);
+    w.sfx('crash', 0.35, 1.5);
+  }
+
+  /**
+   * The camera starts on the core, its eye lights up green, then the camera travels down the shaft
+   * while ripples turn into heads bursting out of the water (top level first). On the bottom level
+   * all heads roar together, then every visual head dives back: the real heads rise with their
+   * normal telegraphs once the fight starts. Nothing here touches the real spots, parts or hazards.
+   */
+  *entrance(w: World): Script {
+    const rng = w.vrng;
+    try {
+      this.introRip = this.spots.map(() => ({ t0: -1, t1: 1e9 }));
+      this.introCam = this.y - 30;
+      const ripple = (...ids: number[]): void => { for (const i of ids) this.introRip[i].t0 = this.clock; };
+      // 1. core eye lights up (green flicker), ripples on the top level
+      ripple(6, 7);
+      w.sfx('charge', 0.7, 0.7);
+      yield* this.cineRun(0.6, (k) => {
+        this.introEye = k < 0.45 ? (Math.floor(this.clock * 32) % 3 === 0 ? 0 : (0.6 * k) / 0.45) : 1;
+        if (rng.chance(0.5)) w.fx.sparks(this.x + rng.range(-12, 12), this.y - 34 + rng.range(-10, 6), 1, P.acid, 80);
+      });
+      this.introEye = 1;
+      w.sfx('zap', 0.8, 0.8);
+      w.fx.flash(P.acid, 0.18, 0.12);
+      w.fx.ring(this.x, this.y - 34, 6, 60, P.acid, 0.45, 2);
+      // 2. top level heads
+      this.introBurst(w, 6);
+      yield* this.cineRun(0.2);
+      this.introBurst(w, 7);
+      yield* this.cineRun(0.25);
+      // 3. the camera drops to the middle level
+      this.introCam = 560;
+      ripple(3, 4, 5);
+      yield* this.cineRun(0.35);
+      this.introBurst(w, 3);
+      yield* this.cineRun(0.15);
+      this.introBurst(w, 4);
+      yield* this.cineRun(0.15);
+      this.introBurst(w, 5);
+      yield* this.cineRun(0.2);
+      // 4. and to the bottom level, where the fight happens
+      this.introCam = 890;
+      ripple(0, 1, 2);
+      yield* this.cineRun(0.35);
+      this.introBurst(w, 0);
+      yield* this.cineRun(0.15);
+      this.introBurst(w, 1);
+      yield* this.cineRun(0.15);
+      this.introBurst(w, 2);
+      yield* this.cineRun(0.2);
+      // 5. all heads roar together
+      for (const e of this.introHeads) e.roar = true;
+      w.sfx('rev', 0.9, 0.7);
+      w.sfx('siren', 0.4, 0.6);
+      w.fx.shake(8, 0.5);
+      w.fx.flash(P.acid, 0.22, 0.15);
+      for (const i of [0, 1, 2]) { const s = this.spots[i]; w.fx.ring(s.x, s.y - 20, 8, 80, P.acid, 0.5, 2); }
+      yield* this.cineRun(0.6);
+      // 6. they dive back under the water
+      for (const e of this.introHeads) {
+        e.dive = true;
+        e.roar = false;
+        const s = e.h.spot;
+        w.fx.burst(s.x, s.y - 4, 10, P.teal, 80, 0.4, 2, 0);
+        w.fx.ring(s.x, s.y, 4, 26, P.ice, 0.3, 2);
+      }
+      w.sfx('pop', 0.6, 0.6);
+      yield* this.cineRun(0.4);
+    } finally {
+      this.introCam = null;
+      this.introEye = 0;
+      this.introHeads = [];
+      this.introRip = [];
+    }
+  }
+
+  /** Entrance props: ripples at the water spots, the visual heads, the core eye glow. */
+  private drawIntro(g: Gfx, w: World): void {
+    for (let i = 0; i < this.introRip.length; i++) {
+      const r = this.introRip[i];
+      if (r.t0 < 0) continue;
+      const s = this.spots[i];
+      const age = this.clock - r.t0, since = this.clock - r.t1;
+      if (since > 0.7) continue;
+      const fade = since > 0 ? 1 - since / 0.7 : Math.min(1, age / 0.25);
+      for (let k = 0; k < 3; k++) {
+        const ph = (age * 1.4 + k / 3) % 1;
+        g.ring(s.x, s.y, 3 + ph * 20, 1, k % 2 ? P.ice : P.teal, 0.7 * (1 - ph) * fade, 'floor');
+      }
+      g.ellipse(s.x, s.y, 10 + 2 * Math.sin(age * 14), 4, P.teal, 0.25 * fade, 'floor');
+    }
+    for (const e of this.introHeads) if (e.h.rise > 0.02) this.drawHead(g, w, e.h);
+    if (this.introEye > 0.01) {
+      const e = this.introEye, cy = this.y - 34;
+      g.circle(this.x, cy, 26, P.acid, 0.3 * e, 'light');
+      g.circle(this.x, cy, 12, P.white, 0.35 * e, 'light');
+      g.ring(this.x, cy, 20 + 3 * Math.sin(w.realTime * 12), 1, P.acid, 0.6 * e, 'top');
+    }
+  }
+
   // ------------------------------------------------------------------ core brain
   *brain(w: World): Script {
     yield* this.wait(0.5);
@@ -1009,6 +1161,7 @@ export class Octohydra extends Boss {
   }
 
   draw(g: Gfx, w: World): void {
+    this.drawIntro(g, w);
     const risen = this.coreAnim === 'risen';
     const bob = risen ? Math.sin(this.animClock * 2) * 2 : 0;
     g.ellipse(this.x, this.y + 2, 26, 9, P.ink, 0.5, 'floor');
