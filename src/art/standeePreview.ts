@@ -5,6 +5,8 @@
  *   ?doc=1             only the x2 dark + mid rows and the x1 strip (used for docs/standees.png)
  *   ?only=a,b          restrict to these frame names
  *   ?zoom=x,y,w,h      only x4 crops of that rectangle of each frame
+ *   ?icons=1           the `ico` sheet (cyberware / mod / reward icons) at x1 and x3 with names
+ *                      (used for docs/icons.png)
  *   ?sprite=1          Echo's in-fight sprite (pc_echo) vs the old ow_echo on the four arena floors,
  *                      plus the Echo standees (used for docs/echo_sprite.png)
  * Sets `window.__standeeReady = true` when drawn (for headless screenshots).
@@ -12,6 +14,7 @@
 import { C, PALETTE_RGB } from './palette';
 import { buildAllSpecs } from './index';
 import { buildStandeeArt, STANDEE_H, STANDEE_W } from './standees';
+import { buildIconArt } from './icons';
 import type { PixBuf } from './core/pixbuf';
 import type { SheetSpec } from './core/sheet';
 
@@ -45,6 +48,27 @@ function rowOn(title: string, frames: Frame[], s: number, floor: PixBuf, fx: num
   paint(ctx, floor.crop(fx, fy, w, h), 0, 16, s);
   let x = pad;
   for (const f of frames) { paint(ctx, f.buf, x * s, 16 + pad * s, s); x += f.buf.w + pad; }
+  document.getElementById('out')!.appendChild(cv);
+}
+
+/** Frames in a grid with a name under each (icons). */
+function table(title: string, frames: Frame[], s: number, cols: number, bg: number, cellW: number): void {
+  const fw = frames[0].buf.w * s, fh = frames[0].buf.h * s;
+  const cw = Math.max(fw, cellW) + 8, chh = fh + 22;
+  const cv = document.createElement('canvas');
+  cv.width = cols * cw + 8; cv.height = Math.ceil(frames.length / cols) * chh + 24;
+  const ctx = cv.getContext('2d')!;
+  ctx.fillStyle = hex(bg);
+  ctx.fillRect(0, 0, cv.width, cv.height);
+  ctx.font = '11px monospace';
+  ctx.fillStyle = '#9097c0';
+  ctx.fillText(title, 6, 13);
+  frames.forEach((f, i) => {
+    const x = 8 + (i % cols) * cw, y = 22 + Math.floor(i / cols) * chh;
+    paint(ctx, f.buf, x + (cw - 8 - fw) / 2, y, s);
+    ctx.fillStyle = '#ccd2ea';
+    ctx.fillText(f.name, x, y + fh + 13);
+  });
   document.getElementById('out')!.appendChild(cv);
 }
 
@@ -83,7 +107,12 @@ const only = q.get('only');
 if (only) frames = frames.filter((f) => only.split(',').includes(f.name));
 const zoom = q.get('zoom');
 
-if (q.get('sprite')) {
+if (q.get('icons')) {
+  const ico = buildIconArt()[0].frames;
+  table('ico 24x24 at x3 (dark)', ico, 3, 9, C.ink, 96);
+  table('ico at x3 on a card background', ico, 3, 9, C.navy, 96);
+  table('ico at x1', ico, 1, 9, C.night, 96);
+} else if (q.get('sprite')) {
   const all = buildAllSpecs();
   const sheet = (key: string) => pick(all, key).map((f) => ({ name: f.name.split('/')[1], buf: f.buf }));
   const pc = sheet('pc_echo'), ow = sheet('ow_echo');

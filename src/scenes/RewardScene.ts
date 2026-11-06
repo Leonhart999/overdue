@@ -22,7 +22,16 @@ function cardInfo(c: Card): { kind: string; name: string; desc: string; replaces
   return { kind: '机体', name: '生命上限 +1', desc: '生命上限 +1，并回复 1 格。' };
 }
 
+/** Frame in the 'ico' sheet for a reward card. */
+function cardIcon(c: Card): string {
+  return c.kind === 'maxhp' ? 'maxhp' : c.id;
+}
+
 export class RewardScene extends Phaser.Scene {
+  private hasIcon(frame: string): boolean {
+    return this.textures.exists('ico') && this.textures.get('ico').has(frame);
+  }
+
   private beaten!: BossId;
   constructor() { super('Reward'); }
 
@@ -54,6 +63,11 @@ export class RewardScene extends Phaser.Scene {
       o.push(text(this, x + 12, CY + 28, info.name, { scale: 2, color: P.white }));
       o.push(text(this, x + 12, CY + 64, info.desc, { wrap: CW - 24 }));
       if (info.replaces) o.push(text(this, x + 12, CY + CH - 22, info.replaces, { color: P.fog }));
+      const icon = cardIcon(c);
+      if (this.hasIcon(icon)) {
+        this.add.circle(x + CW / 2, CY + 172, 30, P.navy, 0.8);
+        this.add.image(x + CW / 2, CY + 172, 'ico', icon).setScale(2);
+      }
       objs.push(o);
     });
 
@@ -88,11 +102,15 @@ export class RewardScene extends Phaser.Scene {
       if (!loan) { proceed(); return; }
       stage = 'loan';
       const info = cardInfo(loan.card);
+      // dim everything behind the contract
+      this.add.rectangle(0, 0, W, H, P.ink, 0.8).setOrigin(0, 0).setDepth(9);
       loanObjs = [
         text(this, 130, 102, UI.loan, { scale: 2, color: P.red }).setDepth(11),
         text(this, 510, 108, UI.loanHint, { align: 'right', color: P.fog }).setDepth(11),
         text(this, 130, 136, `获得：${info.name}（${info.kind}）`, { color: P.white }).setDepth(11),
-        text(this, 130, 154, info.desc, { wrap: 380, color: P.pale }).setDepth(11),
+        ...(this.hasIcon(cardIcon(loan.card)) ? [this.add.image(492, 160, 'ico', cardIcon(loan.card)).setScale(2).setDepth(11)] : []),
+        ...(this.hasIcon('loan') ? [this.add.image(492, 220, 'ico', 'loan').setScale(2).setDepth(11)] : []),
+        text(this, 130, 154, info.desc, { wrap: 320, color: P.pale }).setDepth(11),
         text(this, 130, 214, `代价：${loan.loan.text}`, { color: P.amber }).setDepth(11),
         text(this, 230, 246, '签', { align: 'center' }).setDepth(11),
         text(this, 410, 246, '不签', { align: 'center' }).setDepth(11),

@@ -18,7 +18,7 @@ import { World } from '../game/world';
 import { drawHud } from './hud';
 import { applySettings, PauseMenu } from './pauseMenu';
 import { session } from './session';
-import { fmt, goto, H, W } from '../ui/ui';
+import { fmt, goto, H, W, wrapCjk } from '../ui/ui';
 
 const DT = 1 / 60;
 
@@ -266,13 +266,15 @@ export class HubScene extends Phaser.Scene {
       const opts = slotOptions(slot);
       g.rect(92, y, 456, 46, f ? P.navy : P.night, 1, 'ui');
       if (f) g.strokeRect(92, y, 456, 46, 1, P.cyan, 1, 'ui');
+      if (this.textures.exists('ico') && this.textures.get('ico').has(id)) g.img('ico', id, 141, y + 23, { layer: 'ui', ox: 0.5, oy: 0.5 });
       g.text(`${SLOT_TEXT[slot].name}`, 104, y + 6, { layer: 'ui', color: P.slate });
       g.text(SLOT_TEXT[slot].key, 104, y + 24, { layer: 'ui', color: COL.player, alpha: 0.8 });
       g.text(`◀  ${CYBER_TEXT[id].name}  ▶`, 156, y + 6, { layer: 'ui', color: f ? P.white : P.pale });
       g.text(`${opts.indexOf(id) + 1}/${opts.length}`, 536, y + 6, { layer: 'ui', align: 'right', color: P.slate });
       const desc = CYBER_TEXT[id].desc || '无效果';
-      g.text(desc.slice(0, 32), 156, y + 21, { layer: 'ui', color: P.steel });
-      if (desc.length > 32) g.text(desc.length > 64 ? desc.slice(32, 63) + '…' : desc.slice(32), 156, y + 33, { layer: 'ui', color: P.steel });
+      const lines = wrapCjk(desc, 372).split('\n');
+      g.text(lines[0], 156, y + 19, { layer: 'ui', color: P.steel });
+      if (lines[1]) g.text(lines.length > 2 ? lines[1].slice(0, -1) + '…' : lines[1], 156, y + 31, { layer: 'ui', color: P.steel });
     });
     g.text('上下选部位 · 左右切换（鼠标左/右键） · E / Esc 关闭', W / 2, 314, { layer: 'ui', align: 'center', color: P.slate });
   }

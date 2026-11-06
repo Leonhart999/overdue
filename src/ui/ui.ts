@@ -7,10 +7,29 @@ export const W = 640;
 export const H = 360;
 export const hex = (c: number) => '#' + c.toString(16).padStart(6, '0');
 
+/**
+ * Line-break Chinese/mixed text by character width (FusionPixel 12px: CJK 12 px, ASCII 6 px).
+ * Phaser's word wrap breaks at spaces, which splits things like "（2 次充能）" badly.
+ * Closing punctuation never starts a line.
+ */
+export function wrapCjk(str: string, maxPx: number): string {
+  const noStart = '，。、；：！？）》」』%…,.;:!?)';
+  const out: string[] = [];
+  for (const para of str.split('\n')) {
+    let line = '', w = 0;
+    for (const ch of para) {
+      const cw = ch.charCodeAt(0) < 0x2e80 ? 6 : 12;
+      if (w + cw > maxPx && line && !noStart.includes(ch)) { out.push(line.trimEnd()); line = ch === ' ' ? '' : ch; w = ch === ' ' ? 0 : cw; continue; }
+      line += ch; w += cw;
+    }
+    out.push(line);
+  }
+  return out.join('\n');
+}
+
 export function text(scene: Phaser.Scene, x: number, y: number, str: string, o: { color?: number; scale?: number; align?: 'left' | 'center' | 'right'; wrap?: number; alpha?: number; stroke?: boolean } = {}): Phaser.GameObjects.Text {
-  const t = scene.add.text(x, y, str, {
+  const t = scene.add.text(x, y, o.wrap ? wrapCjk(str, o.wrap / (o.scale ?? 1)) : str, {
     fontFamily: 'FusionPixel', fontSize: '12px', color: hex(o.color ?? P.pale),
-    wordWrap: o.wrap ? { width: o.wrap / (o.scale ?? 1), useAdvancedWrap: true } : undefined,
     lineSpacing: 2,
   });
   t.setResolution(1);
