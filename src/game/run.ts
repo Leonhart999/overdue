@@ -52,9 +52,13 @@ export interface RunState {
   practice?: boolean;
 }
 
+/** Fights per run (a random subset of the bosses when there are more). */
+export const RUN_FIGHTS = 4;
+
 export function newRun(weapon: WeaponId, seed = (Math.random() * 2 ** 31) | 0): RunState {
   const rng = new Rng(seed);
-  const order = rng.shuffle(availableBosses().slice());
+  // each run meets RUN_FIGHTS of the available bosses, in random order
+  const order = rng.shuffle(availableBosses().slice()).slice(0, RUN_FIGHTS);
   return { seed, rngState: seed ^ 0x5bd1e995, order, index: 0, loadout: newLoadout(weapon), records: [], pendingLoans: [], startedAt: Date.now() };
 }
 
