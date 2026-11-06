@@ -21,7 +21,7 @@ Standees: `standee-preview.html`.
 
 Runs start and end in the hub (据点): weapon racks, a practice cyberware bench, a training dummy and turret, and the exit elevator.
 
-Double-click `play.bat`: it builds a snapshot and serves it at http://127.0.0.1:5175/ without file watching, so edits to the code never restart the game you are playing (run it again to get the latest version). `dev.bat` / `npm run dev` is the hot-reload development server at http://127.0.0.1:5174/; it reloads the page whenever a source file is saved.
+Double-click `play.bat`: it builds a snapshot and serves it at http://127.0.0.1:5180/ without file watching, so edits to the code never restart the game you are playing (run it again to get the latest version). `dev.bat` / `npm run dev` is the hot-reload development server at http://127.0.0.1:5174/; it reloads the page whenever a source file is saved.
 
 WASD move · mouse aim · LMB attack · RMB weapon special · Space dash (legs) · Q arm · E interact · Esc pause.
 

@@ -9,7 +9,7 @@
     "preview": "vite preview",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
-    "play": "vite build --logLevel warn && vite preview --port 5175 --strictPort --host 127.0.0.1"
+    "play": "vite build --logLevel warn && vite preview --port 5180 --strictPort --host 127.0.0.1"
   },
   "dependencies": {
     "phaser": "^3.90.0"
