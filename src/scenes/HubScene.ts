@@ -18,7 +18,11 @@ import { World } from '../game/world';
 import { drawHud } from './hud';
 import { applySettings, PauseMenu } from './pauseMenu';
 import { session } from './session';
-import { fmt, goto, H, W, wrapCjk } from '../ui/ui';
+import { fmt, goto, H, W } from '../ui/ui';
+import { textWidth } from '../ui/crispText';
+import {
+  cells, cellsWidth, chip, dim, dots, focusRow, header, heading, hints, hintStrip, keycap, panel, para, SLOT_COL, socket, tagText, txt, type Hint,
+} from '../ui/kit';
 
 const DT = 1 / 60;
 
@@ -35,6 +39,31 @@ const HUB_MUSIC: MusicTrack = {
 };
 
 type Overlay = 'bench' | 'records' | 'menu' | 'sim' | null;
+
+// overlay layouts (screen space) and their hint rows
+const BENCH = { x: 72, y: 40, w: 496, h: 292, rowY: 80, rowH: 52 };
+const SIM = { x: 64, y: 40, w: 512, h: 292, rowY: 80, rowH: 42, listW: 268 };
+const RECORDS = { x: 120, y: 68, w: 400, h: 224 };
+const HUB_HINTS: Hint[] = [
+  { keys: ['E'], label: '互动' },
+  { keys: [], label: '武器架换武器' },
+  { keys: [], label: '义体台试义体' },
+  { keys: [], label: '右边是训练场' },
+  { keys: [], label: '电梯出发' },
+];
+const BENCH_HINTS: Hint[] = [
+  { keys: ['↑↓'], label: '选部位' },
+  { keys: ['←→', 'mouseL', 'mouseR'], label: '切换' },
+  { keys: ['E', 'Esc'], label: '关闭' },
+];
+const SIM_HINTS: Hint[] = [
+  { keys: ['↑↓'], label: '选头目' },
+  { keys: ['←→'], label: '选难度' },
+  { keys: ['Enter'], label: '开打' },
+  { keys: ['E', 'Esc'], label: '关闭' },
+];
+const RECORDS_HINTS: Hint[] = [{ keys: ['Esc'], label: '任意键关闭' }];
+const SIM_TIER_TEXT = ['生命 ×1', '生命 ×1.35 · 更快', '生命 ×1.7 · 更快', '生命 ×2 · 最快'];
 
 /** Options per slot on the bench: stock part first, then every reward part of that slot. */
 function slotOptions(slot: Slot): CyberId[] {
@@ -223,8 +252,14 @@ export class HubScene extends Phaser.Scene {
         if (close || k === 'Enter' || k === 'Space' || k === 'MouseLeft') this.overlay = null;
       }
     }
-    if (this.overlay === 'bench') {
-      for (let i = 0; i < 4; i++) if (my > 92 + i * 52 && my < 92 + i * 52 + 46 && inp.ax > 90 && inp.ax < 550) this.row = i;
+    // mouse hover picks the row
+    const mx = inp.ax - this.cameras.main.scrollX;
+    if (this.overlay === 'bench' && mx > BENCH.x && mx < BENCH.x + BENCH.w) {
+      for (let i = 0; i < 4; i++) if (my >= BENCH.rowY + i * BENCH.rowH - 2 && my < BENCH.rowY + (i + 1) * BENCH.rowH - 2) this.row = i;
+    }
+    if (this.overlay === 'sim' && mx > SIM.x && mx < SIM.x + 6 + SIM.listW) {
+      const n = availableBosses().length;
+      for (let i = 0; i < n; i++) if (my >= SIM.rowY + i * SIM.rowH - 2 && my < SIM.rowY + (i + 1) * SIM.rowH - 2) this.simBoss = i;
     }
   }
 
@@ -238,7 +273,7 @@ export class HubScene extends Phaser.Scene {
     if (this.overlay) w.prompt = null;
     w.draw(g);
     drawHud(g, w, sx, sy, (f) => this.textures.exists('ico') && this.textures.get('ico').has(f));
-    if (!this.overlay) g.text('E 互动 · 武器架换武器 · 义体台试义体 · 右边是训练场 · 电梯出发', W / 2, 344, { layer: 'ui', align: 'center', color: P.slate });
+    if (!this.overlay) hintStrip(g, HUB_HINTS, H - 21, { alpha: 0.9 });
     w.fx.drawFlash(g, W, H);
     if (this.overlay === 'bench') this.drawBench();
     if (this.overlay === 'records') this.drawRecords();
@@ -247,82 +282,122 @@ export class HubScene extends Phaser.Scene {
     g.end();
   }
 
-  private box(x: number, y: number, w: number, h: number, edge: number = P.slate): void {
+  private hasTex(key: string, frame: string): boolean {
+    return this.textures.exists(key) && this.textures.get(key).has(frame);
+  }
+
+  /** Overlay frame: dim the hub, panel with header strip, key-cap hints in the footer. */
+  private frame(x: number, y: number, w: number, h: number, title: string, tag: string, accent: number, hintsRow: Hint[], sub?: string): void {
     const g = this.gfx;
-    g.rect(x, y, w, h, P.night, 0.96, 'ui');
-    g.strokeRect(x, y, w, h, 1, edge, 1, 'ui');
+    dim(g, 0.72);
+    panel(g, x, y, w, h, { layer: 'over', accent, alpha: 1 });
+    header(g, x, y, w, title, tag, accent, { layer: 'over', sub, subColor: P.amber });
+    g.rect(x + 8, y + h - 25, w - 16, 1, P.navy, 1, 'over');
+    hints(g, hintsRow, x + w / 2, y + h - 19, { layer: 'over', align: 'center' });
   }
 
   private drawBench(): void {
-    const g = this.gfx;
-    g.rect(0, 0, W, H, P.ink, 0.6, 'ui');
-    this.box(80, 46, 480, 290, P.cyan);
-    g.text('义体台', 96, 54, { layer: 'ui', color: P.white, scale: 2 });
-    g.text('只在据点生效 · 出发时恢复原厂', 544, 60, { layer: 'ui', align: 'right', color: P.amber });
+    const g = this.gfx, L = 'over' as const;
+    const B = BENCH;
+    this.frame(B.x, B.y, B.w, B.h, '义体台', 'CYBERWARE BENCH', P.cyan, BENCH_HINTS, '只在据点生效 · 出发时恢复原厂');
     SLOTS.forEach((slot, i) => {
-      const y = 92 + i * 52;
+      const y = B.rowY + i * B.rowH;
       const f = i === this.row;
       const id = this.loadout.cyber[slot];
       const opts = slotOptions(slot);
-      g.rect(92, y, 456, 46, f ? P.navy : P.night, 1, 'ui');
-      if (f) g.strokeRect(92, y, 456, 46, 1, P.cyan, 1, 'ui');
-      if (this.textures.exists('ico') && this.textures.get('ico').has(id)) g.img('ico', id, 141, y + 23, { layer: 'ui', ox: 0.5, oy: 0.5 });
-      g.text(`${SLOT_TEXT[slot].name}`, 104, y + 6, { layer: 'ui', color: P.slate });
-      g.text(SLOT_TEXT[slot].key, 104, y + 24, { layer: 'ui', color: COL.player, alpha: 0.8 });
-      g.text(`◀  ${CYBER_TEXT[id].name}  ▶`, 156, y + 6, { layer: 'ui', color: f ? P.white : P.pale });
-      g.text(`${opts.indexOf(id) + 1}/${opts.length}`, 536, y + 6, { layer: 'ui', align: 'right', color: P.slate });
-      const desc = CYBER_TEXT[id].desc || '无效果';
-      const lines = wrapCjk(desc, 372).split('\n');
-      g.text(lines[0], 156, y + 19, { layer: 'ui', color: P.steel });
-      if (lines[1]) g.text(lines.length > 2 ? lines[1].slice(0, -1) + '…' : lines[1], 156, y + 31, { layer: 'ui', color: P.steel });
+      const x = B.x + 6, w = B.w - 12;
+      if (f) focusRow(g, x, y, w, B.rowH - 4, P.cyan, L);
+      if (i > 0) g.rect(x + 8, y - 3, w - 16, 1, P.navy, 1, L);
+      // slot name + its key
+      txt(g, SLOT_TEXT[slot].name, x + 16, y + 6, { layer: L, color: f ? P.white : P.fog });
+      if (slot === 'legs' || slot === 'arm') keycap(g, SLOT_TEXT[slot].key, x + 16, y + 24, { layer: L });
+      else chip(g, 'AUTO', x + 16, y + 25, { layer: L, color: P.slate });
+      // icon socket
+      socket(g, x + 52, y + 8, 28, 28, { layer: L, edge: f ? SLOT_COL[slot] : undefined });
+      if (this.hasTex('ico', id)) g.img('ico', id, x + 54, y + 10, { layer: L, ox: 0, oy: 0 });
+      // ◀ name ▶ and the option counter
+      const nx = x + 92;
+      arrowChip(g, '◀', nx, y + 6, f, L);
+      txt(g, CYBER_TEXT[id].name, nx + 16, y + 5, { layer: L, color: f ? P.white : P.pale });
+      arrowChip(g, '▶', nx + 22 + textWidth(CYBER_TEXT[id].name), y + 6, f, L);
+      tagText(g, `${opts.indexOf(id) + 1} / ${opts.length}`, x + w - 12, y + 8, { layer: L, align: 'right', color: P.slate });
+      para(g, CYBER_TEXT[id].desc || '无效果', nx, y + 21, w - (nx - x) - 16, { layer: L, color: f ? P.pale : P.steel, maxLines: 2, lineH: 13 });
     });
-    g.text('上下选部位 · 左右切换（鼠标左/右键） · E / Esc 关闭', W / 2, 314, { layer: 'ui', align: 'center', color: P.slate });
   }
 
   private drawSim(): void {
-    const g = this.gfx;
+    const g = this.gfx, L = 'over' as const;
+    const S = SIM;
     const ids = availableBosses();
-    g.rect(0, 0, W, H, P.ink, 0.6, 'ui');
-    this.box(70, 40, 500, 296, P.acid);
-    g.text('头目模拟器', 86, 48, { layer: 'ui', color: P.white, scale: 2 });
-    g.text('用当前武器和义体台上的义体 · 不计战绩', 554, 54, { layer: 'ui', align: 'right', color: P.amber });
+    this.frame(S.x, S.y, S.w, S.h, '头目模拟器', 'SIMULATOR', P.acid, SIM_HINTS, '用当前武器和义体台上的义体 · 不计战绩');
+    const sel = this.simBoss % ids.length;
     ids.forEach((id, i) => {
-      const y = 84 + i * 52;
-      const f = i === this.simBoss % ids.length;
-      g.rect(84, y, 300, 46, f ? P.navy : P.night, 1, 'ui');
-      if (f) g.strokeRect(84, y, 300, 46, 1, P.acid, 1, 'ui');
-      g.text(BOSS_TEXT[id].name, 96, y + 6, { layer: 'ui', color: f ? P.white : P.pale });
-      g.text(BOSS_TEXT[id].place, 96, y + 24, { layer: 'ui', color: P.slate });
+      const y = S.rowY + i * S.rowH;
+      const f = i === sel;
+      const x = S.x + 6, w = S.listW;
+      if (f) focusRow(g, x, y, w, S.rowH - 4, P.acid, L);
+      if (i > 0) g.rect(x + 8, y - 3, w - 16, 1, P.navy, 1, L);
+      txt(g, BOSS_TEXT[id].name, x + 16, y + 3, { layer: L, color: f ? P.white : P.pale });
+      txt(g, BOSS_TEXT[id].place, x + 16, y + 18, { layer: L, color: f ? P.fog : P.slate });
       const kills = session.meta.bossKills[id] ?? 0;
-      g.text(`击败 ${kills}`, 372, y + 6, { layer: 'ui', align: 'right', color: P.slate });
+      tagText(g, 'KILLS', x + w - 12, y + 6, { layer: L, align: 'right', color: P.slate });
+      txt(g, String(kills), x + w - 12, y + 15, { layer: L, align: 'right', color: kills ? P.acid : P.slate });
     });
-    const sel = ids[this.simBoss % ids.length];
-    if (this.textures.exists('standee') && this.textures.get('standee').has(sel)) {
-      g.circle(476, 220, 62, P.acid, 0.08, 'ui');
-      g.img('standee', sel, 476, 296, { layer: 'ui', ox: 0.5, oy: 1 });
-    }
-    g.text(`难度  ◀ 第 ${this.simTier} 场 ▶`, 476, 92, { layer: 'ui', align: 'center', color: P.cyan });
-    g.text(['生命 ×1', '生命 ×1.35 · 更快', '生命 ×1.7 · 更快', '生命 ×2 · 最快'][this.simTier - 1], 476, 110, { layer: 'ui', align: 'center', color: P.slate });
-    g.text('上下选头目 · 左右选难度 · Enter 开打 · E / Esc 关闭', W / 2, 314, { layer: 'ui', align: 'center', color: P.slate });
+    // preview window: standee over a grid, difficulty below
+    const px = S.x + S.listW + 16, pw = S.x + S.w - 12 - px, py = S.rowY, ph = 156;
+    socket(g, px, py, pw, ph, { layer: L, edge: P.moss });
+    for (let gx = px + 8; gx < px + pw - 2; gx += 16) g.rect(gx, py + 2, 1, ph - 4, P.moss, 0.5, L);
+    for (let gy = py + 12; gy < py + ph - 2; gy += 16) g.rect(px + 2, gy, pw - 4, 1, P.moss, 0.5, L);
+    const boss = ids[sel];
+    if (this.hasTex('standee', boss)) g.img('standee', boss, px + pw / 2, py + ph - 1, { layer: L, ox: 0.5, oy: 1 });
+    tagText(g, BOSS_TEXT[boss].en.toUpperCase(), px + 6, py + 6, { layer: L, color: P.acid });
+    const dy = py + ph + 10;
+    txt(g, '难度', px, dy, { layer: L, color: P.fog });
+    arrowChip(g, '◀', px + 32, dy + 1, true, L);
+    txt(g, `第 ${this.simTier} 场`, px + 48, dy, { layer: L, color: P.white });
+    arrowChip(g, '▶', px + 54 + textWidth(`第 ${this.simTier} 场`), dy + 1, true, L);
+    cells(g, px + pw - cellsWidth(4, 6), dy + 3, 4, this.simTier, P.acid, { layer: L, w: 6, h: 7 });
+    txt(g, SIM_TIER_TEXT[this.simTier - 1], px, dy + 17, { layer: L, color: P.slate });
   }
 
   private drawRecords(): void {
-    const g = this.gfx;
+    const g = this.gfx, L = 'over' as const;
+    const R = RECORDS;
     const m = session.meta;
-    g.rect(0, 0, W, H, P.ink, 0.6, 'ui');
-    this.box(140, 60, 360, 240, P.acid);
-    g.text('战绩', 156, 68, { layer: 'ui', color: P.white, scale: 2 });
-    g.text(`出击 ${m.runs} 次 · 通关 ${m.wins} 次`, 156, 102, { layer: 'ui', color: P.pale });
-    g.text('击败头目', 156, 128, { layer: 'ui', color: P.slate });
-    availableBosses().forEach((b, i) => {
-      g.text(`${BOSS_TEXT[b].name}  ${m.bossKills[b] ?? 0}`, 172, 146 + i * 16, { layer: 'ui', color: P.pale });
+    this.frame(R.x, R.y, R.w, R.h, '战绩', 'LEDGER', P.amber, RECORDS_HINTS);
+    // summary tiles
+    const tiles: [string, string, number][] = [['出击', 'RUNS', m.runs], ['通关', 'CLEARED', m.wins]];
+    tiles.forEach(([label, tag, n], i) => {
+      const tx = R.x + 16 + i * 92, ty = R.y + 42;
+      socket(g, tx, ty, 84, 36, { layer: L });
+      tagText(g, tag, tx + 6, ty + 5, { layer: L, color: P.slate });
+      txt(g, label, tx + 6, ty + 16, { layer: L, color: P.fog });
+      heading(g, String(n), tx + 78, ty + 7, { layer: L, align: 'right', color: i ? P.amber : P.white });
     });
-    g.text('最快通关', 340, 128, { layer: 'ui', color: P.slate });
-    WEAPONS.forEach((wp, i) => {
-      const t = m.bestRun[wp];
-      g.text(`${WEAPON_TEXT[wp].name}  ${t ? fmt(t) : '—'}`, 356, 146 + i * 16, { layer: 'ui', color: t ? P.amber : P.slate });
+    // two-column ledger
+    const colW = (R.w - 48) / 2;
+    const cols: { title: string; tag: string; rows: [string, string, number][] }[] = [
+      { title: '击败头目', tag: 'KILLS', rows: availableBosses().map((b): [string, string, number] => [BOSS_TEXT[b].name, String(m.bossKills[b] ?? 0), (m.bossKills[b] ?? 0) ? P.pale : P.slate]) },
+      { title: '最快通关', tag: 'BEST', rows: WEAPONS.map((wp): [string, string, number] => { const t = m.bestRun[wp]; return [WEAPON_TEXT[wp].name, t ? fmt(t) : '—', t ? P.amber : P.slate]; }) },
+    ];
+    cols.forEach((c, i) => {
+      const cx = R.x + 16 + i * (colW + 16), cy = R.y + 90;
+      txt(g, c.title, cx, cy, { layer: L, color: P.fog });
+      tagText(g, c.tag, cx + colW, cy + 4, { layer: L, align: 'right', color: P.amber });
+      g.rect(cx, cy + 15, colW, 1, P.slate, 1, L);
+      c.rows.forEach(([name, val, col], j) => {
+        const ry = cy + 20 + j * 16;
+        txt(g, name, cx, ry, { layer: L, color: col === P.slate ? P.steel : P.pale });
+        txt(g, val, cx + colW, ry, { layer: L, align: 'right', color: col });
+        dots(g, cx + textWidth(name) + 4, cx + colW - textWidth(val) - 4, ry + 9, P.indigo, L);
+      });
     });
-    g.text('任意键关闭', W / 2, 276, { layer: 'ui', align: 'center', color: P.slate });
   }
+}
 
+/** Small ◀ / ▶ chip (lit in the focused row). */
+function arrowChip(g: PhaserGfx, a: '◀' | '▶', x: number, y: number, lit: boolean, layer: 'over'): void {
+  g.rect(x, y, 9, 11, P.ink, 1, layer);
+  g.rect(x + 1, y + 1, 7, 9, lit ? P.indigo : P.night, 1, layer);
+  g.crisp(a, x + 3, y + 3, { layer, font: 'micro', color: lit ? P.cyan : P.slate });
 }

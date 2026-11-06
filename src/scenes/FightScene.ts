@@ -15,6 +15,8 @@ import { drawHud } from './hud';
 import { applySettings, PauseMenu } from './pauseMenu';
 import { session } from './session';
 import { goto, H, W } from '../ui/ui';
+import { textWidth } from '../ui/crispText';
+import { heading, panel, stamp, tagText, tagWidth, txt } from '../ui/kit';
 
 const DT = 1 / 60;
 
@@ -166,10 +168,12 @@ export class FightScene extends Phaser.Scene {
     const a = Math.min(1, t * 4) * Math.min(1, (1.9 - t) * 4);
     const bt = BOSS_TEXT[w.boss!.id];
     const def = BOSS_DEFS[w.boss!.id]!;
-    const slide = (1 - Math.min(1, t * 3)) * 60;
+    const slide = Math.round((1 - Math.min(1, t * 3)) * 60);
     g.rect(0, 140, W, 82, P.ink, 0.85 * a, 'ui');
     g.rect(0, 140, W, 1, P.red, a, 'ui');
     g.rect(0, 221, W, 1, P.red, a, 'ui');
+    // tick marks on the rules, every 16 px, sliding in
+    for (let x = (slide * 2) % 16; x < W; x += 16) { g.rect(x, 141, 1, 2, P.maroon, a, 'ui'); g.rect(x, 219, 1, 2, P.maroon, a, 'ui'); }
     const boss = w.boss!.id;
     if (this.hasStandee(boss)) {
       // versus card: Echo (faces right) on the left, the boss (faces left) on the right;
@@ -178,17 +182,21 @@ export class FightScene extends Phaser.Scene {
       g.circle(100 - slide, 176, 64, P.cyan, 0.08 * a, 'ui');
       if (this.hasStandee('echo')) g.img('standee', 'echo', 100 - slide, 222, { layer: 'ui', ox: 0.5, oy: 1, alpha: a });
       g.img('standee', boss, 540 + slide, 222, { layer: 'ui', ox: 0.5, oy: 1, alpha: a });
-      g.text(UI.fight.replace('{n}', String(this.data0.tier)), W / 2, 148, { layer: 'ui', color: P.fog, alpha: a, align: 'center' });
-      g.text(bt.name, W / 2, 162, { layer: 'ui', color: P.white, alpha: a, scale: 2, align: 'center' });
-      g.text(bt.en, W / 2, 190, { layer: 'ui', color: P.red, alpha: a, align: 'center' });
-      g.text(bt.place, W / 2, 204, { layer: 'ui', color: P.sodium, alpha: a, align: 'center' });
+      txt(g, UI.fight.replace('{n}', String(this.data0.tier)), W / 2, 147, { color: P.fog, alpha: a, align: 'center' });
+      heading(g, bt.name, W / 2, 162, { alpha: a, align: 'center' });
+      const en = bt.en.toUpperCase();
+      tagText(g, en, W / 2, 191, { color: P.red, alpha: a, align: 'center', spacing: 2 });
+      const ew = tagWidth(en, 2);
+      g.rect(W / 2 - ew / 2 - 22, 193, 14, 1, P.red, a, 'ui');
+      g.rect(W / 2 + ew / 2 + 8, 193, 14, 1, P.red, a, 'ui');
+      txt(g, bt.place, W / 2, 202, { color: P.sodium, alpha: a, align: 'center' });
       return;
     }
     if (def.portrait) g.img(def.portrait.key, def.portrait.frame, 150 - slide, 149, { layer: 'ui', ox: 0, oy: 0, alpha: a });
-    g.text(UI.fight.replace('{n}', String(this.data0.tier)), 232 + slide, 150, { layer: 'ui', color: P.fog, alpha: a });
-    g.text(bt.name, 232 + slide, 166, { layer: 'ui', color: P.white, alpha: a, scale: 2 });
-    g.text(bt.en, 232 + slide + bt.name.length * 24 + 10, 176, { layer: 'ui', color: P.red, alpha: a });
-    g.text(bt.place, 232 + slide, 196, { layer: 'ui', color: P.sodium, alpha: a });
+    txt(g, UI.fight.replace('{n}', String(this.data0.tier)), 232 + slide, 150, { color: P.fog, alpha: a });
+    heading(g, bt.name, 232 + slide, 166, { alpha: a });
+    tagText(g, bt.en.toUpperCase(), 232 + slide + textWidth(bt.name, { scale: 2 }) + 10, 181, { color: P.red, alpha: a, spacing: 2 });
+    txt(g, bt.place, 232 + slide, 196, { color: P.sodium, alpha: a });
   }
 
   private seenPhase = 0;
@@ -203,13 +211,15 @@ export class FightScene extends Phaser.Scene {
     if (!frame) return;
     const t = 1.3 - this.phaseCardT;
     const a = Math.min(1, t * 5, this.phaseCardT * 4);
-    const slide = (1 - Math.min(1, t * 4)) * 80;
+    const slide = Math.round((1 - Math.min(1, t * 4)) * 80);
     const g = this.gfx;
     g.rect(470 + slide, 244, 170, 116, P.ink, 0.6 * a, 'ui');
     g.rect(470 + slide, 244, 2, 116, P.red, a, 'ui');
+    g.rect(470 + slide, 244, 170, 1, P.red, a, 'ui');
     g.circle(570 + slide, 300, 60, P.red, 0.15 * a, 'ui');
     g.img('standee', frame, 572 + slide, H, { layer: 'ui', ox: 0.5, oy: 1, alpha: a });
-    g.text(`第 ${b.phase + 1} 阶段`, 480 + slide, 248, { layer: 'ui', color: P.red, alpha: a });
+    tagText(g, `PHASE ${String(b.phase + 1).padStart(2, '0')}`, 480 + slide, 250, { color: P.red, alpha: a, spacing: 2 });
+    g.crisp(`第 ${b.phase + 1} 阶段`, 480 + slide, 260, { color: P.white, outline: P.ink, alpha: a });
   }
 
   private hasStandee(frame: string): boolean {
@@ -219,19 +229,29 @@ export class FightScene extends Phaser.Scene {
   private drawHint(): void {
     const w = this.world;
     const hint = BOSS_DEFS[w.boss!.id]?.hint;
-    if (!hint || w.state !== 'fight' || w.stateT > 9) return;
+    if (!hint || w.state !== 'fight' || w.stateT > 9 || this.paused) return;
     if ((session.meta.bossKills[w.boss!.id] ?? 0) >= 2) return;
     const a = Math.min(1, w.stateT * 2, (9 - w.stateT) * 1.5);
-    this.gfx.rect(0, 340, W, 20, P.ink, 0.7 * a, 'ui');
-    this.gfx.text(hint, W / 2, 344, { layer: 'ui', align: 'center', color: P.amber, alpha: a });
+    const g = this.gfx;
+    const tag = 'TIP';
+    const tw = textWidth(hint) + tagWidth(tag) + 30;
+    const x = Math.round(W / 2 - tw / 2), y = H - 22;
+    panel(g, x, y, tw, 18, { accent: P.amber, cut: 3, scan: false, alpha: 0.9 * a });
+    tagText(g, tag, x + 10, y + 7, { color: P.amber, alpha: a });
+    txt(g, hint, x + 20 + tagWidth(tag), y + 3, { color: P.amber, alpha: a });
   }
 
   private drawEndBanner(): void {
     const w = this.world;
     const won = w.state === 'won';
     const a = Math.min(1, w.stateT * 2);
-    this.gfx.rect(0, 160, W, 40, P.ink, 0.7 * a, 'ui');
-    this.gfx.text(won ? UI.victory : UI.defeat, W / 2, 168, { layer: 'ui', align: 'center', scale: 2, color: won ? P.amber : P.red, alpha: a });
+    const g = this.gfx;
+    g.rect(0, 150, W, 60, P.ink, 0.7 * a, 'ui');
+    g.rect(0, 150, W, 1, won ? P.orange : P.red, a, 'ui');
+    g.rect(0, 209, W, 1, won ? P.orange : P.red, a, 'ui');
+    // the verdict stamp slams down: x2 for the first frames, then x1
+    const slam = w.stateT < 0.12;
+    stamp(g, won ? UI.victory : UI.defeat, W / 2, 180, { color: won ? P.orange : P.red, angle: -6, glyph: 3, scale: slam ? 2 : 1, alpha: slam ? 0.5 * a : a, seed: won ? 5 : 9 });
   }
 
   private checkEnd(): void {

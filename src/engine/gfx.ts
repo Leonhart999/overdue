@@ -11,10 +11,14 @@
  *   top    bullets, beams, particles, overhead objects
  *   light  additive glows
  *   ui     screen-space overlay (HUD draws here)
+ *   over   screen-space, above the whole ui layer (menus and overlays drawn over the HUD)
+ *
+ * Inside one layer, shapes sit below images, and images below texts (each kind is one pooled
+ * object list). Crisp text (see `crisp`) is drawn as an image.
  */
 import { PALETTE } from '../art/palette';
 
-export type Layer = 'floor' | 'world' | 'top' | 'light' | 'ui';
+export type Layer = 'floor' | 'world' | 'top' | 'light' | 'ui' | 'over';
 
 export interface ImgOpts {
   layer?: Layer;
@@ -47,9 +51,38 @@ export interface TextOpts {
   overDark?: boolean;
 }
 
+/** Look of a crisp text texture (part of its cache key). */
+export interface CrispStyle {
+  color?: number;
+  /** 'fusion' = FusionPixel 12 px (default), 'micro' = the 3x5 kit font (uppercase, digits). */
+  font?: 'fusion' | 'micro';
+  /** Baked 1 px outline colour. */
+  outline?: number;
+  /** Baked 1 px drop shadow colour (down-right). */
+  shadow?: number;
+  /** Extra pixels between characters. */
+  spacing?: number;
+  /** Turn the text into a rubber stamp: glyphs at `glyph`x, double border, rotated, distressed. */
+  stamp?: { angle: number; glyph?: number; seed?: number };
+}
+
+export interface CrispOpts extends CrispStyle {
+  layer?: Layer;
+  align?: 'left' | 'center' | 'right';
+  alpha?: number;
+  /** Integer draw scale. */
+  scale?: number;
+}
+
 export interface Gfx {
   img(key: string, frame: string | number, x: number, y: number, o?: ImgOpts): void;
   text(str: string, x: number, y: number, o?: TextOpts): void;
+  /**
+   * Hard-pixel text from a cached texture, drawn at integer scale (default layer 'ui').
+   * (x, y) is the top-left of the glyph box (12 px tall for fusion, 5 px for micro, times
+   * scale); a baked outline extends 1 px outside it. Stamps are centred on (x, y).
+   */
+  crisp(str: string, x: number, y: number, o?: CrispOpts): void;
   /** Shapes are not available on the 'world' layer (they would ignore y-sorting). */
   circle(x: number, y: number, r: number, color: number, alpha?: number, layer?: Layer): void;
   ring(x: number, y: number, r: number, width: number, color: number, alpha?: number, layer?: Layer): void;
@@ -88,6 +121,7 @@ export const COL = {
 export class NullGfx implements Gfx {
   img(): void {}
   text(): void {}
+  crisp(): void {}
   circle(): void {}
   ring(): void {}
   ellipse(): void {}

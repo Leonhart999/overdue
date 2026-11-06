@@ -1,7 +1,8 @@
 /** Phaser implementation of the immediate-mode Gfx interface (pooled images, texts, shape layers). */
 import Phaser from 'phaser';
 import { glyphSheet, type GlyphRect } from '../art/glyphs';
-import type { Gfx, ImgOpts, Layer, TextOpts } from './gfx';
+import type { CrispOpts, Gfx, ImgOpts, Layer, TextOpts } from './gfx';
+import { crispTex } from '../ui/crispText';
 
 const DEPTH = {
   floorImg: 10,
@@ -16,6 +17,9 @@ const DEPTH = {
   uiG: 7900,
   uiImg: 8000,
   uiText: 9500,
+  overG: 9600,
+  overImg: 9700,
+  overText: 9900,
 };
 
 const hex = (c: number) => '#' + c.toString(16).padStart(6, '0');
@@ -34,7 +38,7 @@ export class PhaserGfx implements Gfx {
   private uiTexts: Phaser.GameObjects.Text[] = [];
   private nUiText = 0;
   private g: Record<Exclude<Layer, 'world'>, Phaser.GameObjects.Graphics>;
-  private order = { floor: 0, top: 0, light: 0, ui: 0, text: 0 };
+  private order = { floor: 0, top: 0, light: 0, ui: 0, over: 0, text: 0 };
   private dark: Phaser.GameObjects.RenderTexture;
   private hole: Phaser.GameObjects.Image;
   private darkUsed = false;
@@ -46,7 +50,7 @@ export class PhaserGfx implements Gfx {
       this.filter(gr, ui);
       return gr;
     };
-    this.g = { floor: mk(DEPTH.floorG), top: mk(DEPTH.topG), light: mk(DEPTH.lightG), ui: mk(DEPTH.uiG, true) };
+    this.g = { floor: mk(DEPTH.floorG), top: mk(DEPTH.topG), light: mk(DEPTH.lightG), ui: mk(DEPTH.uiG, true), over: mk(DEPTH.overG, true) };
     this.g.light.setBlendMode(Phaser.BlendModes.ADD);
     const { width, height } = scene.scale;
     this.dark = scene.add.renderTexture(0, 0, width, height).setOrigin(0, 0).setDepth(DEPTH.dark).setVisible(false);
@@ -55,8 +59,12 @@ export class PhaserGfx implements Gfx {
     this.hole = scene.make.image({ key: 'fx_hole', add: false });
   }
 
-  /** Show an object on exactly one of the two cameras. */
+  /**
+   * Show an object on exactly one of the two cameras. Menu scenes pass the same camera twice
+   * (no separate ui camera): then everything is shown on it.
+   */
   private filter(o: Phaser.GameObjects.GameObject, ui: boolean): void {
+    if (this.mainCam === this.uiCam) return;
     (o as unknown as { cameraFilter: number }).cameraFilter = ui ? this.mainCam.id : this.uiCam.id;
   }
 
@@ -64,7 +72,7 @@ export class PhaserGfx implements Gfx {
     this.nImg = 0;
     this.nText = 0;
     this.nUiText = 0;
-    this.order = { floor: 0, top: 0, light: 0, ui: 0, text: 0 };
+    this.order = { floor: 0, top: 0, light: 0, ui: 0, over: 0, text: 0 };
     for (const k of Object.keys(this.g) as (keyof typeof this.g)[]) this.g[k].clear();
     this.darkUsed = false;
   }
@@ -108,15 +116,16 @@ export class PhaserGfx implements Gfx {
       case 'world': depth = DEPTH.world + (o.depth ?? y) + this.nImg * 1e-5; break;
       case 'top': depth = DEPTH.topImg + this.order.top++ * 0.01; break;
       case 'light': depth = DEPTH.lightImg + this.order.light++ * 0.01; break;
+      case 'over': depth = DEPTH.overImg + this.order.over++ * 0.01; break;
       default: depth = DEPTH.uiImg + this.order.ui++ * 0.01;
     }
     im.setDepth(depth);
-    this.filter(im, layer === 'ui');
+    this.filter(im, layer === 'ui' || layer === 'over');
   }
 
   text(str: string, x: number, y: number, o: TextOpts = {}): void {
     // HUD text has its own pool so world labels coming and going don't shift (and re-render) it
-    const ui = (o.layer ?? 'top') === 'ui';
+    const ui = o.layer === 'ui' || o.layer === 'over';
     const pool = ui ? this.uiTexts : this.texts;
     const n = ui ? this.nUiText++ : this.nText++;
     let t = pool[n];
@@ -138,8 +147,30 @@ export class PhaserGfx implements Gfx {
     t.setAlpha(o.alpha ?? 1);
     t.setScale(o.scale ?? 1);
     const layer = o.layer ?? 'top';
-    t.setDepth((layer === 'ui' ? DEPTH.uiText : o.overDark ? DEPTH.dark + 50 : DEPTH.topText) + this.order.text++ * 0.01);
-    this.filter(t, layer === 'ui');
+    t.setDepth((layer === 'over' ? DEPTH.overText : layer === 'ui' ? DEPTH.uiText : o.overDark ? DEPTH.dark + 50 : DEPTH.topText) + this.order.text++ * 0.01);
+    this.filter(t, ui);
+  }
+
+  crisp(str: string, x: number, y: number, o: CrispOpts = {}): void {
+    if (!str) return;
+    const layer = o.layer ?? 'ui';
+    const s = Math.max(1, Math.round(o.scale ?? 1));
+    const t = crispTex(this.scene.textures, str, o);
+    if (!t) {
+      // font not loaded yet: plain text keeps the screen readable
+      this.text(str, x, y, { layer, color: o.color, align: o.align, alpha: o.alpha, scale: s, stroke: o.outline !== undefined });
+      return;
+    }
+    let left: number, top: number;
+    if (o.stamp) {
+      left = Math.round(x - (t.w * s) / 2);
+      top = Math.round(y - (t.h * s) / 2);
+    } else {
+      const w = t.tw * s;
+      left = Math.round(o.align === 'center' ? x - w / 2 : o.align === 'right' ? x - w : x) - t.pad * s;
+      top = Math.round(y) - t.pad * s;
+    }
+    this.img(t.key, '__BASE', left, top, { layer, ox: 0, oy: 0, scale: s, alpha: o.alpha });
   }
 
   private gr(layer: Layer | undefined): Phaser.GameObjects.Graphics {

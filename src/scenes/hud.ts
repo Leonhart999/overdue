@@ -1,9 +1,19 @@
-/** Fight HUD, drawn every frame through Gfx on the 'ui' layer. */
+/**
+ * Fight/hub HUD, drawn every frame through Gfx on the 'ui' layer (screen space).
+ *
+ * Three plates along the top 37 px: player (HP cells, shield cells, weapon line), boss (name,
+ * status, HP bar with phase ticks and chip-away, poise strip) and cyberware (4 sockets with
+ * key-cap badges hanging under them). Plus the interact prompt tag, off-screen edge markers on
+ * scrolling maps, and the crosshair.
+ */
 import { COL, P, type Gfx } from '../engine/gfx';
 import { clamp } from '../engine/math';
-import { SLOT_TEXT, WEAPON_TEXT, CYBER_TEXT } from '../data/text';
+import { WEAPON_TEXT, CYBER_TEXT } from '../data/text';
+import type { Boss } from '../game/boss';
 import type { Shape } from '../game/types';
 import { SCREEN_H, SCREEN_W, type World } from '../game/world';
+import { textWidth } from '../ui/crispText';
+import { bar, chip, keycap, keyWidth, mouseIcon, panel, pxRect, socket, txt } from '../ui/kit';
 
 const SLOT_SHORT: Record<string, string> = {
   legs_stock: '冲刺', legs_leap: '跳跃', legs_blink: '瞬移', legs_slide: '滑铲',
@@ -12,46 +22,110 @@ const SLOT_SHORT: Record<string, string> = {
   head_none: '—', head_optics: '目镜', head_reflex: '神经', head_ballistic: '弹道',
 };
 
+/** Badge key per active slot (micro font glyphs). */
+const SLOT_KEY: Record<string, string> = { legs: '␣', arm: 'Q' };
+
+const PLATE_Y = 3, PLATE_H = 36, PLATE_A = 0.9;
+const LEFT = { x: 4, w: 176 };
+const MID = { x: 184, w: 272 };
+const RIGHT = { x: 460, w: 176 };
+const BAR = { x: 190, y: 22, w: 260, h: 7 };
+
+/** HP chip-away: the white trail holds for 0.4 s after a hit, then catches up. */
+const chipState = new WeakMap<Boss, { last: number; chip: number; hitAt: number; t: number }>();
+
+function chipFrac(b: Boss, f: number, now: number): number {
+  let s = chipState.get(b);
+  if (!s) { s = { last: f, chip: f, hitAt: -1, t: now }; chipState.set(b, s); }
+  const dt = clamp(now - s.t, 0, 0.1);
+  s.t = now;
+  if (f < s.last) s.hitAt = now;
+  if (f > s.chip) s.chip = f;
+  s.last = f;
+  if (now - s.hitAt > 0.4) s.chip = Math.max(f, s.chip - dt * 0.8);
+  return s.chip;
+}
+
 /**
  * `hasIcon` tells whether the 'ico' sheet has a frame (scenes pass a texture-manager check);
  * without it the slots fall back to short text names.
  */
 export function drawHud(g: Gfx, w: World, camX: number, camY: number, hasIcon: (frame: string) => boolean = () => false): void {
-  const p = w.player;
-  // ---- hearts
-  const shown = Math.min(p.maxHp, 10);
-  for (let i = 0; i < shown; i++) g.img('hud', i < p.hp ? 'heart' : 'heart_empty', 8 + i * 11, 6, { layer: 'ui', ox: 0, oy: 0 });
-  if (p.maxHp > shown) g.text(`${p.hp}`, 8 + shown * 11 + 2, 3, { layer: 'ui', color: P.rose });
-  for (let i = 0; i < p.shieldMax; i++) g.img('hud', i < p.shield ? 'shield' : 'heart_empty', 8 + (shown + i) * 11 + 3, 6, { layer: 'ui', ox: 0, oy: 0, alpha: i < p.shield ? 1 : 0.4 });
+  drawPlayerPlate(g, w);
+  drawSlots(g, w, hasIcon);
+  const b = w.boss;
+  if (b && w.state !== 'intro') drawBossPlate(g, w, b);
 
-  // ---- weapon
+  // ---- off-screen warnings (scrolling maps)
+  if (w.scrolls) drawOffscreen(g, w, camX, camY);
+
+  // ---- prompt
+  if (w.prompt) drawPrompt(g, w.prompt, w.player.x - camX, w.player.y - camY - 40);
+
+  // ---- crosshair
+  const inp = w.input;
+  if (inp) g.img('cursor', 'cursor', inp.ax - camX, inp.ay - camY, { layer: 'ui', ox: 0.5, oy: 0.5 });
+}
+
+// ------------------------------------------------------------------ player plate
+
+function drawPlayerPlate(g: Gfx, w: World): void {
+  const p = w.player;
+  panel(g, LEFT.x, PLATE_Y, LEFT.w, PLATE_H, { accent: P.cyan, alpha: PLATE_A });
+  // row 1: HP cells (max 10 drawn), shield cells, number when there are more than 10
+  const x0 = LEFT.x + 7, y0 = PLATE_Y + 4;
+  const shown = Math.min(p.maxHp, 10);
+  g.crisp('HP', x0, y0 + 3, { font: 'micro', color: P.rose });
+  const hx = x0 + 11;
+  for (let i = 0; i < shown; i++) g.img('uik_c', i < p.hp ? 'hp_full' : 'hp_empty', hx + i * 8, y0, { layer: 'ui', ox: 0, oy: 0 });
+  let x = hx + shown * 8;
+  if (p.maxHp > shown) {
+    g.crisp(`${p.hp}`, x + 2, y0, { color: P.rose });
+    x += 4 + textWidth(`${p.hp}`);
+  }
+  if (p.shieldMax > 0) {
+    x += 4;
+    for (let i = 0; i < p.shieldMax; i++) g.img('uik_c', i < p.shield ? 'sh_full' : 'sh_empty', x + i * 8, y0, { layer: 'ui', ox: 0, oy: 0 });
+  }
+
+  // row 2: weapon sprite, name, ammo / shells, charge, special readiness, status
   const wt = WEAPON_TEXT[p.loadout.weapon];
   const h = p.weapon.hud();
-  g.text(wt.name, 8, 18, { layer: 'ui', color: P.pale });
-  let x = 8 + wt.name.length * 12 + 6;
+  const ry = PLATE_Y + 19;
+  g.rect(x0, ry - 1, LEFT.w - 14, 1, P.navy, 1, 'ui');
+  g.img('wpn', p.loadout.weapon, x0 - 1, ry + 2, { layer: 'ui', ox: 0, oy: 0 });
+  x = x0 + 21;
+  txt(g, wt.name, x, ry + 1);
+  x += textWidth(wt.name) + 6;
   if (p.loadout.weapon === 'breacher') {
-    for (let i = 0; i < 2; i++) g.img('hud', i < (h.ammo ?? 0) ? 'shell' : 'shell_empty', x + i * 8, 20, { layer: 'ui', ox: 0, oy: 0 });
-    x += 20;
+    for (let i = 0; i < 2; i++) g.img('hud', i < (h.ammo ?? 0) ? 'shell' : 'shell_empty', x + i * 8 - 2, ry + 2, { layer: 'ui', ox: 0, oy: 0 });
+    x += 18;
   } else if (h.ammo !== undefined) {
-    g.img('hud', 'nail', x, 20, { layer: 'ui', ox: 0, oy: 0 });
-    g.text(`${h.ammo}`, x + 11, 18, { layer: 'ui', color: h.ammo === 0 ? P.red : P.white });
-    x += 32;
+    const n = `${h.ammo}`, max = h.ammoMax !== undefined ? `/${h.ammoMax}` : '';
+    const nx = x + Math.max(0, 12 - textWidth(n));
+    txt(g, n, nx, ry + 1, { color: h.ammo === 0 ? P.red : P.white });
+    if (max) txt(g, max, nx + textWidth(n), ry + 1, { color: P.slate });
+    x = nx + textWidth(n) + textWidth(max) + 6;
   }
   if (h.charge !== undefined) {
-    g.rect(x, 22, 50, 4, P.ink, 1, 'ui');
-    g.rect(x, 22, 50 * h.charge, 4, h.charge >= 0.25 ? P.cyan : P.teal, 1, 'ui');
-    g.rect(x + 12, 21, 1, 6, P.slate, 1, 'ui');
-    x += 56;
+    const ready = h.charge >= 0.25;
+    bar(g, x, ry + 6, 40, 3, h.charge, { fill: ready ? P.cyan : P.teal, hi: P.ice, track: P.abyss, ticks: [0.25], tickColor: P.slate });
+    x += 46;
   }
   if (h.special !== undefined && p.loadout.weapon !== 'riveter') {
     const ready = h.special >= 1;
-    g.text('右键', x, 18, { layer: 'ui', color: ready ? P.amber : P.slate });
-    if (!ready) { g.rect(x, 31, 24 * clamp(h.special, 0, 1), 2, P.amber, 0.8, 'ui'); }
-    x += 30;
+    mouseIcon(g, ready ? 'r' : 'n', x, ry, { amber: true, alpha: ready ? 1 : 0.6 });
+    if (!ready) g.rect(x, ry + 15, Math.round(9 * clamp(h.special, 0, 1)), 1, P.amber, 1, 'ui');
+    x += 14;
   }
-  if (h.text) g.text(h.text, x, 18, { layer: 'ui', color: P.fog });
+  if (h.text) txt(g, h.text, x, ry + 1, { color: P.fog });
+}
 
-  // ---- cyberware slots (top right)
+// ------------------------------------------------------------------ cyberware sockets
+
+function drawSlots(g: Gfx, w: World, hasIcon: (frame: string) => boolean): void {
+  const p = w.player;
+  panel(g, RIGHT.x, PLATE_Y, RIGHT.w, PLATE_H, { alpha: PLATE_A });
   const slots: { slot: 'legs' | 'arm' | 'core' | 'head'; frac: number; extra: string }[] = [
     { slot: 'legs', frac: p.legs.readyFrac(), extra: p.legs.hudText() },
     { slot: 'arm', frac: p.arm.readyFrac(), extra: p.arm.hudText() },
@@ -59,60 +133,79 @@ export function drawHud(g: Gfx, w: World, camX: number, camY: number, hasIcon: (
     { slot: 'head', frac: 1, extra: '' },
   ];
   slots.forEach((s, i) => {
-    const bx = 640 - 8 - (4 - i) * 38, by = 4;
+    const cx = RIGHT.x + 28 + i * 40;
+    const sx = cx - 13, sy = PLATE_Y + 3;
     const id = p.loadout.cyber[s.slot];
     const empty = id === 'core_none' || id === 'head_none';
-    const icon = hasIcon(id);
-    const BH = icon ? 38 : 26;
-    g.rect(bx, by, 34, BH, P.night, 0.9, 'ui');
-    g.strokeRect(bx, by, 34, BH, 1, empty ? P.navy : s.frac >= 1 ? P.slate : P.indigo, 1, 'ui');
-    if (icon) {
-      g.img('ico', id, bx + 17, by + 14, { layer: 'ui', ox: 0.5, oy: 0.5, alpha: empty ? 0.5 : 1 });
-      if (s.frac < 1) g.rect(bx + 1, by + 1, 32, 26 * (1 - s.frac), P.ink, 0.7, 'ui');
-      g.text(s.extra || SLOT_TEXT[s.slot].key, bx + 17, by + 25, { layer: 'ui', align: 'center', color: s.slot === 'legs' || s.slot === 'arm' ? COL.player : P.slate, alpha: 0.85 });
-    } else {
-      if (s.frac < 1) g.rect(bx + 1, by + 1, 32, 24 * (1 - s.frac), P.ink, 0.75, 'ui');
-      g.text(SLOT_SHORT[id] ?? CYBER_TEXT[id].name, bx + 17, by + 1, { layer: 'ui', align: 'center', color: empty ? P.slate : s.frac >= 1 ? P.pale : P.steel });
-      g.text(s.extra || SLOT_TEXT[s.slot].key, bx + 17, by + 13, { layer: 'ui', align: 'center', color: s.slot === 'legs' || s.slot === 'arm' ? COL.player : P.slate, alpha: 0.85 });
+    const active = s.slot === 'legs' || s.slot === 'arm';
+    const ready = s.frac >= 1;
+    socket(g, sx, sy, 26, 26, { edge: empty ? undefined : ready && active ? P.slate : undefined });
+    if (hasIcon(id)) g.img('ico', id, sx + 1, sy + 1, { layer: 'ui', ox: 0, oy: 0, alpha: empty ? 0.4 : 1 });
+    else txt(g, SLOT_SHORT[id] ?? CYBER_TEXT[id].name, cx, sy + 7, { align: 'center', color: empty ? P.slate : ready ? P.pale : P.steel });
+    // cooldown: the unready part is shaded from the top, with a lit edge
+    if (!ready) {
+      const ch = Math.round(24 * (1 - s.frac));
+      pxRect(g, sx + 1, sy + 1, 24, ch, P.ink, 0.72);
+      pxRect(g, sx + 1, sy + 1 + ch, 24, 1, active ? P.teal : P.grape, 1);
     }
     const lock = s.slot === 'legs' ? p.locked.legs : s.slot === 'arm' ? p.locked.arm : 0;
     if (lock > 0) {
-      g.rect(bx, by, 34, BH, P.maroon, 0.7, 'ui');
-      g.line(bx + 4, by + 4, bx + 30, by + BH - 4, 2, P.red, 1, 'ui');
-      g.line(bx + 30, by + 4, bx + 4, by + BH - 4, 2, P.red, 1, 'ui');
-      g.text(`封锁 ${Math.ceil(lock)}`, bx + 17, by + BH + 1, { layer: 'ui', align: 'center', color: P.red });
+      pxRect(g, sx + 1, sy + 1, 24, 24, P.maroon, 0.6);
+      g.img('uik_x', 'lock', sx + 1, sy + 1, { layer: 'ui', ox: 0, oy: 0 });
+      chip(g, `LOCK ${Math.ceil(lock)}`, cx, sy + 23, { align: 'center', fill: P.red, color: P.white, image: true });
+      return;
     }
+    // badge hanging under the socket: key cap for active slots, AUTO tag for passive ones
+    if (active) keycap(g, SLOT_KEY[s.slot], cx - Math.floor(keyWidth(SLOT_KEY[s.slot]) / 2), sy + 22, { image: true, alpha: ready ? 1 : 0.85 });
+    else if (!empty) chip(g, 'AUTO', cx, sy + 23, { align: 'center', fill: P.night, color: P.slate, image: true });
+    // charges (e.g. blink) in the top-right corner
+    if (s.extra) chip(g, s.extra, sx + 25, sy - 1, { align: 'right', fill: P.ink, color: COL.player, image: true });
   });
-
-  // ---- boss bar
-  const b = w.boss;
-  if (b && w.state !== 'intro') {
-    const bx = 190, bw = 260, by = 20;
-    g.text(b.name, bx, 4, { layer: 'ui', color: P.white });
-    if (b.status) g.text(b.status, bx + bw, 4, { layer: 'ui', align: 'right', color: P.amber });
-    g.rect(bx - 1, by - 1, bw + 2, 8, P.ink, 1, 'ui');
-    const f = clamp(b.hp / b.maxHp, 0, 1);
-    g.rect(bx, by, bw, 6, P.maroon, 1, 'ui');
-    g.rect(bx, by, Math.round(bw * f), 6, b.staggered ? P.rose : P.red, 1, 'ui');
-    g.rect(bx, by, Math.round(bw * f), 1, P.rose, 0.8, 'ui');
-    for (const t of b.thresholds) g.rect(bx + Math.round(bw * t), by - 1, 1, 8, P.white, 0.8, 'ui');
-    // poise
-    const pf = b.staggered ? b.staggerT / b.staggerDur : clamp(b.poise / b.poiseMax, 0, 1);
-    g.rect(bx, by + 9, bw, 3, P.ink, 1, 'ui');
-    g.rect(bx, by + 9, Math.round(bw * pf), 3, b.staggered ? P.white : P.amber, b.staggered ? 0.6 + 0.4 * Math.sin(w.realTime * 20) : 1, 'ui');
-    if (b.staggered) g.text('瘫痪', bx + bw / 2, by + 12, { layer: 'ui', align: 'center', color: P.amber });
-  }
-
-  // ---- off-screen warnings (scrolling maps)
-  if (w.scrolls) drawOffscreen(g, w, camX, camY);
-
-  // ---- prompt
-  if (w.prompt) g.text(w.prompt, p.x - camX, p.y - camY - 40, { layer: 'ui', align: 'center', color: COL.interact });
-
-  // ---- crosshair
-  const inp = w.input;
-  if (inp) g.img('cursor', 'cursor', inp.ax - camX, inp.ay - camY, { layer: 'ui', ox: 0.5, oy: 0.5 });
 }
+
+// ------------------------------------------------------------------ boss plate
+
+function drawBossPlate(g: Gfx, w: World, b: Boss): void {
+  panel(g, MID.x, PLATE_Y, MID.w, PLATE_H, { accent: P.red, alpha: PLATE_A });
+  txt(g, b.name, BAR.x + 2, PLATE_Y + 4, { color: P.white });
+  if (b.status) txt(g, b.status, BAR.x + BAR.w, PLATE_Y + 4, { align: 'right', color: P.amber });
+  const f = clamp(b.hp / b.maxHp, 0, 1);
+  const chipF = chipFrac(b, f, w.realTime);
+  bar(g, BAR.x, BAR.y, BAR.w, BAR.h, f, {
+    fill: b.staggered ? P.rose : P.red, hi: P.rose, track: P.maroon, chip: chipF, ticks: b.thresholds, tickColor: P.white,
+  });
+  // poise / stagger strip
+  const pf = b.staggered ? b.staggerT / b.staggerDur : clamp(b.poise / b.poiseMax, 0, 1);
+  const pulse = b.staggered ? 0.6 + 0.4 * Math.sin(w.realTime * 20) : 1;
+  bar(g, BAR.x, BAR.y + BAR.h + 3, BAR.w, 2, pf, { fill: b.staggered ? P.white : P.amber, track: P.night, alpha: pulse });
+  if (b.staggered) {
+    const tw = textWidth('瘫痪') + 12;
+    const tx = Math.round(320 - tw / 2);
+    panel(g, tx, PLATE_Y + PLATE_H - 1, tw, 16, { edge: P.amber, cut: 3, scan: false, bevel: false });
+    txt(g, '瘫痪', 320, PLATE_Y + PLATE_H + 1, { align: 'center', color: P.amber });
+  }
+}
+
+// ------------------------------------------------------------------ prompt
+
+/** Interact prompt: an amber-edged tag with the key cap and the verb (prompt text 'E  verb'). */
+function drawPrompt(g: Gfx, prompt: string, x: number, y: number): void {
+  const m = /^([A-Z])\s+(.*)$/.exec(prompt);
+  const key = m ? m[1] : null;
+  const label = m ? m[2] : prompt;
+  const kw = key ? keyWidth(key) + 4 : 0;
+  const w = kw + textWidth(label) + 12;
+  const left = Math.round(x - w / 2), top = Math.round(y - 2);
+  panel(g, left, top, w, 17, { accent: P.amber, cut: 3, scan: false, alpha: 0.94 });
+  let cx = left + 6;
+  if (key) { keycap(g, key, cx, top + 3); cx += kw; }
+  txt(g, label, cx, top + 3, { color: COL.interact });
+  // pointer notch under the tag
+  g.rect(Math.round(x) - 1, top + 17, 3, 1, P.ink, 0.94, 'ui');
+  g.rect(Math.round(x), top + 18, 1, 1, P.ink, 0.94, 'ui');
+}
+
+// ------------------------------------------------------------------ off-screen markers
 
 /** Point of a shape closest to (x, y). */
 function nearestOnShape(s: Shape, x: number, y: number): [number, number] {
