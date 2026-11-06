@@ -242,7 +242,9 @@ export class World {
         const rr = c.r + e.r + 2;
         if ((c.x - e.x) ** 2 + (c.y - e.y) ** 2 <= rr * rr) {
           e.dead = true;
-          if (c.pierce !== Infinity) c.dead = true; // the slug keeps going ("穿透一切")
+          // the slug keeps going ("穿透一切"); pellets can break more than one soft bullet
+          if (c.softPierce > 0) c.softPierce--;
+          else if (c.pierce !== Infinity) c.dead = true;
           this.fx.burst(e.x, e.y, 4, COL.soft, 50, 0.2, 1);
           this.sfx('pop');
           break;

@@ -468,6 +468,7 @@ class Pellet extends Bullet {
     this.life = 0.27;
     this.src = 'pellet';
     this.cancelsSoft = true;
+    this.softPierce = 1; // each pellet breaks two soft bullets
     this.knock = 48;
     this.ignite = dragon;
     this.homing = p.homing;

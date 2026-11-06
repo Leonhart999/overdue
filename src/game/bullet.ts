@@ -38,6 +38,8 @@ export class Bullet {
   dead = false;
   /** Destroys enemy soft bullets on contact (shotgun pellets). */
   cancelsSoft = false;
+  /** Extra soft bullets it can break before it is used up. */
+  softPierce = 0;
   /** Can be sent back by the blade / hydraulic fist. */
   deflectable = true;
   /** Rolls along the ground: jumping players are not hit. */

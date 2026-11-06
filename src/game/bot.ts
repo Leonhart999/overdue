@@ -4,6 +4,7 @@
  */
 import type { InputState } from '../engine/input';
 import { dist, norm, Rng } from '../engine/math';
+import { FirePatch } from './hazard';
 import { shapeHits } from './types';
 import type { World } from './world';
 
@@ -45,6 +46,20 @@ export class Bot {
       if (ahead < 10) { danger = true; break; }
     }
     if (danger) s.dashPressed = true;
+    // steer around floor dangers a human would walk around: enemy fire patches, burning oil,
+    // acid puddles and live water circles
+    for (const o of w.objects) {
+      if (!(o instanceof FirePatch) || o.team === 'player') continue;
+      const d = dist(p.x, p.y, o.x, o.y);
+      if (d < o.r + 18) { const [ux, uy] = norm(p.x - o.x, p.y - o.y); mx += ux * 2; my += uy * 2; }
+    }
+    for (const z of w.zones) {
+      if (z.shape.k !== 'circle') continue;
+      const bad = z.burning > 0 || z.electrified > 0 || z.kind === 'acid' || (z.kind === 'oil' && z.burnCooldown <= 0 && w.objects.some((o) => o instanceof FirePatch));
+      if (!bad) continue;
+      const d = dist(p.x, p.y, z.shape.x, z.shape.y);
+      if (d < z.shape.r + 14) { const [ux, uy] = norm(p.x - z.shape.x, p.y - z.shape.y); mx += ux * 2; my += uy * 2; }
+    }
     // arena-specific escape (dry ground before the water goes live...)
     const hint = w.arena.botHint?.(w);
     if (hint) {
