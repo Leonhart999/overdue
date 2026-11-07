@@ -18,6 +18,7 @@ import { buildStandeeArt } from './standees';
 import { buildEchoTopSheet } from './actors/echoTop';
 import { buildIconArt } from './icons';
 import { buildUiKit } from './uiKit';
+import { buildDafeyuArt } from './actors/dafeyu';
 
 let specs: SheetSpec[] | null = null;
 
@@ -43,6 +44,7 @@ export function buildAllSpecs(): SheetSpec[] {
     buildEchoTopSheet(),
     ...buildIconArt(),
     ...buildUiKit(),
+    ...buildDafeyuArt(),
     ...extra.flatMap((f) => f()),
   ];
   const seen = new Set<string>();

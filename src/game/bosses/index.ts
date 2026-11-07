@@ -5,12 +5,14 @@ import { luxDef } from './lux';
 import { octohydraDef } from './octohydra';
 import { kadeDef } from './kade';
 import { vesperDef } from './vesper';
+import { kairoDef } from './kairo';
+import { foldDef } from './fold';
 import type { BossDef } from './registry';
 
 export type { BossDef } from './registry';
 
 export const BOSS_DEFS: Partial<Record<BossId, BossDef>> = {};
-for (const d of [gearjawDef, luxDef, octohydraDef, kadeDef, vesperDef]) if (d) BOSS_DEFS[d.id] = d;
+for (const d of [gearjawDef, luxDef, octohydraDef, kadeDef, vesperDef, kairoDef, foldDef]) if (d) BOSS_DEFS[d.id] = d;
 
 export function availableBosses(): BossId[] {
   return Object.keys(BOSS_DEFS) as BossId[];

@@ -8,7 +8,7 @@ import { COL, P } from '../engine/gfx';
 import { PhaserGfx } from '../engine/gfxPhaser';
 import { clearEdges } from '../engine/input';
 import { KeyboardMouseInput } from '../engine/inputPhaser';
-import { BOSS_TEXT, CYBER_TEXT, MOD_TEXT, SLOT_TEXT, WEAPON_TEXT } from '../data/text';
+import { BOSS_TEXT, CYBER_TEXT, DAFEYU_TEXT, MOD_TEXT, SLOT_TEXT, WEAPON_TEXT } from '../data/text';
 import { makeHubArena } from '../game/arenas/hub';
 import { availableBosses } from '../game/bosses';
 import { CYBER_POOL, CYBER_SLOT, SLOTS, STOCK, WEAPON_MODS, WEAPONS, newLoadout, type CyberId, type Loadout, type Slot, type WeaponId } from '../game/loadout';
@@ -38,13 +38,13 @@ const HUB_MUSIC: MusicTrack = {
   wave: 'triangle',
 };
 
-type Overlay = 'armory' | 'bench' | 'records' | 'menu' | 'sim' | null;
+type Overlay = 'armory' | 'bench' | 'records' | 'menu' | 'sim' | 'neural' | null;
 
 // overlay layouts (screen space) and their hint rows
-const ARMORY = { x: 40, y: 40, w: 560, h: 292, rowY: 80, rowH: 46, listW: 212 };
+const ARMORY = { x: 24, y: 40, w: 592, h: 292, rowY: 80, rowH: 46, listW: 180 };
 const BENCH = { x: 72, y: 40, w: 496, h: 292, rowY: 80, rowH: 52 };
-const SIM = { x: 64, y: 40, w: 512, h: 292, rowY: 80, rowH: 42, listW: 268 };
-const RECORDS = { x: 120, y: 68, w: 400, h: 224 };
+const SIM = { x: 64, y: 40, w: 512, h: 292, rowY: 80, rowH: 30, listW: 268 };
+const RECORDS = { x: 120, y: 52, w: 400, h: 256 };
 const ARMORY_HINTS: Hint[] = [
   { keys: ['↑↓'], label: '选武器' },
   { keys: ['Enter', 'mouseL'], label: '拿上' },
@@ -107,6 +107,7 @@ export class HubScene extends Phaser.Scene {
       openBench: () => this.open('bench'),
       openRecords: () => this.open('records'),
       openSim: () => this.open('sim'),
+      openNeural: () => this.open('neural'),
       depart: () => this.depart(),
     });
     const w = new World(arena, 1, 11);
@@ -252,6 +253,9 @@ export class HubScene extends Phaser.Scene {
         else if (k === 'ArrowRight' || k === 'KeyD') { this.simTier = Math.min(4, this.simTier + 1); audio.sfx('ui'); }
         else if (k === 'Enter' || k === 'Space' || k === 'MouseLeft') { audio.sfx('uiConfirm'); this.startSim(); }
         else if (close) this.overlay = null;
+      } else if (this.overlay === 'neural') {
+        const mx = inp.ax - this.cameras.main.scrollX;
+        if (close || k === 'Enter' || (k === 'MouseLeft' && mx >= 452 && mx <= 528 && my >= 279 && my <= 304)) this.overlay = null;
       } else if (this.overlay === 'records') {
         if (close || k === 'Enter' || k === 'Space' || k === 'MouseLeft') this.overlay = null;
       }
@@ -285,6 +289,7 @@ export class HubScene extends Phaser.Scene {
     if (this.overlay === 'bench') this.drawBench();
     if (this.overlay === 'records') this.drawRecords();
     if (this.overlay === 'sim') this.drawSim();
+    if (this.overlay === 'neural') this.drawNeural();
     if (this.overlay === 'menu') this.pause.draw(g);
     g.end();
   }
@@ -333,13 +338,13 @@ export class HubScene extends Phaser.Scene {
     const best = session.meta.bestRun[id];
     tagText(g, 'BEST', px + pw, y + 4, { layer: L, align: 'right', color: P.slate });
     txt(g, best ? fmt(best) : '—', px + pw, y + 13, { layer: L, align: 'right', color: best ? P.amber : P.slate });
-    y += 50;
-    const LH = 13;
+    y += 44;
+    const LH = 12;
     const rule = (btn: 'l' | 'r', label: string, body: string, maxLines: number) => {
       mouseIcon(g, btn, px, y - 1, { layer: L });
       txt(g, label, px + 14, y, { layer: L, color: P.fog });
       const n = para(g, body, px + 64, y, pw - 64, { layer: L, color: P.pale, lineH: LH, maxLines });
-      y += n * LH + 6;
+      y += n * LH + 4;
     };
     rule('l', '主武器', WEAPON_TEXT[id].primary, 3);
     rule('r', '特殊', WEAPON_TEXT[id].special, 4);
@@ -397,7 +402,7 @@ export class HubScene extends Phaser.Scene {
       if (f) focusRow(g, x, y, w, S.rowH - 4, P.acid, L);
       if (i > 0) g.rect(x + 8, y - 3, w - 16, 1, P.navy, 1, L);
       txt(g, BOSS_TEXT[id].name, x + 16, y + 3, { layer: L, color: f ? P.white : P.pale });
-      txt(g, BOSS_TEXT[id].place, x + 16, y + 18, { layer: L, color: f ? P.fog : P.slate });
+      txt(g, BOSS_TEXT[id].place, x + 16, y + 16, { layer: L, color: f ? P.fog : P.slate });
       const kills = session.meta.bossKills[id] ?? 0;
       tagText(g, 'KILLS', x + w - 12, y + 6, { layer: L, align: 'right', color: P.slate });
       txt(g, String(kills), x + w - 12, y + 15, { layer: L, align: 'right', color: kills ? P.acid : P.slate });
@@ -417,6 +422,29 @@ export class HubScene extends Phaser.Scene {
     arrowChip(g, '▶', px + 54 + textWidth(`第 ${this.simTier} 场`), dy + 1, true, L);
     cells(g, px + pw - cellsWidth(4, 6), dy + 3, 4, this.simTier, P.acid, { layer: L, w: 6, h: 7 });
     txt(g, SIM_TIER_TEXT[this.simTier - 1], px, dy + 17, { layer: L, color: P.slate });
+  }
+
+  private drawNeural(): void {
+    const g = this.gfx, L = 'over' as const;
+    this.frame(96, 56, 448, 252, DAFEYU_TEXT.title, 'NEURAL INTERFACE', P.cyan, []);
+    // The character art is the identity; no biography or dialogue is shown here.
+    socket(g, 112, 102, 136, 168, { layer: L, edge: P.teal });
+    for (let y = 114; y < 264; y += 16) g.rect(114, y, 132, 1, P.teal, 0.2, L);
+    g.ellipse(180, 255, 44, 7, P.teal, 0.35, L);
+    g.img('portrait_dafeyu', 'portrait', 180, 258, { layer: L });
+    chip(g, DAFEYU_TEXT.name, 180, 107, { layer: L, align: 'center', color: P.ice, fill: P.abyss });
+    heading(g, DAFEYU_TEXT.talent, 268, 108, { layer: L });
+    chip(g, DAFEYU_TEXT.pending, 268, 141, { layer: L, color: P.amber });
+    para(g, DAFEYU_TEXT.rule, 268, 165, 244, { layer: L, color: P.fog, lineH: 16, maxLines: 2 });
+    g.line(294, 220, 486, 220, 1, P.teal, 0.6, L);
+    for (const [i, icon] of ['head_optics', 'head_reflex', 'head_ballistic'].entries()) {
+      const x = 278 + i * 88;
+      socket(g, x, 204, 32, 32, { layer: L, edge: P.slate });
+      g.img('ico', icon, x + 4, 208, { layer: L, ox: 0, oy: 0, alpha: 0.35 });
+    }
+    txt(g, DAFEYU_TEXT.unavailable, 390, 250, { layer: L, color: P.slate, align: 'center' });
+    keycap(g, 'Esc', 452, 285, { layer: L });
+    txt(g, DAFEYU_TEXT.close, 480, 284, { layer: L, color: P.fog });
   }
 
   private drawRecords(): void {

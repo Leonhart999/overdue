@@ -5,6 +5,7 @@
 import { COL, P, type Gfx } from '../../engine/gfx';
 import { dist } from '../../engine/math';
 import { Body } from '../body';
+import { Dafeyu } from '../npcs/dafeyu';
 import { Bullet } from '../bullet';
 import { Zone } from '../hazard';
 import { WEAPONS, type WeaponId } from '../loadout';
@@ -18,6 +19,7 @@ export interface HubHooks {
   openBench(): void;
   openRecords(): void;
   openSim(): void;
+  openNeural(): void;
   depart(): void;
 }
 
@@ -243,6 +245,7 @@ export function makeHubArena(hooks: HubHooks): Arena {
       // armory against the top wall, left of the vending machine
       w.walls.push({ x: 57, y: 48, w: 172, h: 48 });
       w.add(new Armory(143, 96, hooks));
+      w.add(new Dafeyu(112, 192, () => hooks.openNeural()));
       w.add(new Station(110, 296, 20, 'bench', '改装义体', () => hooks.openBench()));
       w.add(new Station(196, 300, 10, 'terminal', '查看战绩', () => hooks.openRecords()));
       w.add(new Station(372, 310, 10, 'terminal', '头目模拟器', () => hooks.openSim()));

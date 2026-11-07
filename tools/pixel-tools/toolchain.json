@@ -1,0 +1,14 @@
+{
+  "pixelorama": {
+    "version": "v1.2.4",
+    "url": "https://github.com/Orama-Interactive/Pixelorama/releases/download/v1.2.4/Pixelorama-Windows-64bit.zip",
+    "sha256": "8ce63c264338b88fd36527f8edb3b7f6bba614d92451efc406ef7ce45b41da85",
+    "license": "MIT"
+  },
+  "pyxelate": {
+    "repository": "https://github.com/sedthh/pyxelate.git",
+    "commit": "f4a046b8b148370a20ab7681fce160551e5fc49b",
+    "license": "MIT"
+  },
+  "python": "3.12"
+}

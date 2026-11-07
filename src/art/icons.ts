@@ -381,6 +381,34 @@ function arcWeb(): PixBuf {
   });
 }
 
+function riveterBlast(): PixBuf {
+  return icon((b) => {
+    // Four embedded nails around an explosive core.
+    sh(b, AMBER, 2, (m) => m.poly([[12, 2], [14, 7], [21, 5], [18, 11], [22, 16], [15, 16], [12, 22], [9, 16], [2, 17], [6, 11], [3, 5], [9, 7]], 1), false);
+    for (const [a, c] of [
+      [[4, 4], [10, 10]], [[20, 4], [14, 10]],
+      [[4, 20], [10, 14]], [[20, 20], [14, 14]],
+    ] as [Pt, Pt][]) nail(b, a, c);
+    sh(b, RED, 2, (m) => m.circle(12, 12, 3.2, 1), false);
+    b.set(11, 11, C.amber); b.set(12, 11, C.white);
+  });
+}
+
+function arcAftershock(): PixBuf {
+  return icon((b) => {
+    // A spent orb above concentric floor pulses, with a descending bolt.
+    b.ring(12, 16, 10, C.teal, 1);
+    b.ring(12, 16, 6, C.cyan, 1);
+    b.ellipse(12, 16, 3, 2, C.abyss);
+    sh(b, CYAN, 2, (m) => m.circle(12, 5, 3.2, 1), false);
+    b.set(11, 4, C.white);
+    b.line(13, 8, 10, 12, C.ice);
+    b.line(10, 12, 14, 12, C.ice);
+    b.line(14, 12, 11, 17, C.white);
+    b.set(3, 15, C.ice); b.set(20, 17, C.ice);
+  });
+}
+
 function shell(b: PixBuf, x: number, y: number, angle: number): void {
   const dx = Math.cos(angle), dy = Math.sin(angle);
   sh(b, RED, 2, (m) => m.capsule(x, y, x + dx * 9, y + dy * 9, 2.6, 1), false);
@@ -415,6 +443,24 @@ function breacherRecoil(): PixBuf {
   });
 }
 
+function breacherOverload(): PixBuf {
+  return icon((b) => {
+    // An overfilled shell with a dense fifteen-pellet fan.
+    shell(b, 4, 20, -Math.PI / 4);
+    for (let row = 0; row < 3; row++) {
+      for (let col = 0; col < 5; col++) {
+        const x = 10 + col * 2, y = 3 + row * 3;
+        b.set(x, y, row === 0 ? C.amber : C.sodium);
+        b.set(x, y + 1, C.rust);
+      }
+    }
+    b.line(4, 9, 2, 5, C.orange);
+    b.line(15, 18, 21, 15, C.orange);
+    b.line(16, 21, 22, 20, C.sodium);
+    b.set(7, 2, C.white);
+  });
+}
+
 function bladeShape(b: PixBuf, a: Pt, c: Pt): void {
   sh(b, CHROME, 4, (m) => m.capsule(a[0], a[1], c[0], c[1], 1.4, 1), false);
   ln(b, [a[0] + 1, a[1]], [c[0] + 1, c[1]], C.ice);
@@ -445,6 +491,23 @@ function bladeAfterimage(): PixBuf {
     // slash arcs
     b.line(14, 2, 21, 2, C.ice); b.line(2, 14, 2, 20, C.ice);
     b.set(22, 3, C.white); b.set(1, 21, C.white);
+  });
+}
+
+function bladeFlow(): PixBuf {
+  return icon((b) => {
+    // An infinity-shaped current around the blade, matching the ice/white mod family.
+    let last: Pt = [12, 12];
+    for (let t = 0.08; t <= Math.PI * 2 + 0.08; t += 0.08) {
+      const next: Pt = [12 + Math.sin(t) * 9, 12 + Math.sin(t * 2) * 5];
+      ln(b, last, next, C.teal);
+      last = next;
+    }
+    b.line(3, 10, 7, 7, C.cyan);
+    b.line(17, 17, 21, 14, C.cyan);
+    bladeShape(b, [7, 20], [18, 3]);
+    b.set(19, 3, C.white);
+    b.set(20, 5, C.ice);
   });
 }
 
@@ -505,6 +568,10 @@ export function buildIconArt(): SheetSpec[] {
     { name: 'blade_afterimage', buf: bladeAfterimage() },
     { name: 'maxhp', buf: maxHp() },
     { name: 'loan', buf: loan() },
+    { name: 'blade_flow', buf: bladeFlow() },
+    { name: 'breacher_overload', buf: breacherOverload() },
+    { name: 'riveter_blast', buf: riveterBlast() },
+    { name: 'arc_aftershock', buf: arcAftershock() },
   ];
   return [{ key: 'ico', group: 'Icons', frameW: S, frameH: S, columns: 9, frames, meta: { note: 'Frame names = CyberId / ModId, plus maxhp and loan.' } }];
 }

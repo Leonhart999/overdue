@@ -2,3 +2,12 @@ node_modules/
 dist/
 screenshots/
 *.log
+releases/
+# Local image conversion tools and user artwork
+/tools/pixel-tools/.venv/
+/tools/pixel-tools/vendor/
+/tools/pixel-tools/Pixelorama/
+/tools/pixel-tools/downloads/
+/tools/pixel-tools/data/
+/tools/pixel-tools/output/
+/tools/pixel-tools/__pycache__/

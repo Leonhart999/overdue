@@ -49,6 +49,9 @@ export class Bullet {
 
   constructor(public x: number, public y: number, public vx: number, public vy: number, public team: 'player' | 'enemy') {}
 
+  /** Stationary deployments can ride a moving floor; host-attached shots follow their host. */
+  get floorBound(): boolean { return false; }
+
   get speed(): number { return Math.hypot(this.vx, this.vy); }
 
   update(w: World, dt: number): void {

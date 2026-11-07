@@ -30,9 +30,29 @@ WASD move · mouse aim · LMB attack · RMB weapon special · Space dash (legs) 
 - `npm test` — art build + headless bot fights for every boss and weapon
 - `npm run typecheck`
 - Dev URL: `/?boss=gearjaw&weapon=arc&cyber=legs_leap,arm_fist&bot&god`
+- New bosses: `/?boss=kairo` (校时员·刻洛, memory archive) and `/?boss=fold` (建筑师·折尺, sliding rooms); both are also in the hub simulator. Each run still draws four bosses from the seven available.
 - `node tools/cdp.mjs` — headless Edge run with screenshots and console-error check (`tools/cdp-hub.mjs` for the hub)
 - `/?cover` renders the cover only (exported to `docs/cover.png`, `docs/cover_1920.png`)
 
 Docs: `docs/GDD.md` (design, Chinese), `docs/BOSS_API.md` (how to add a boss).
 
 Font: Fusion Pixel 12px, SIL OFL 1.1 (`public/fonts/OFL-fusion-pixel.txt`).
+
+## Share a portable release
+
+Run `npm run package` to build and create `releases/OVERDUE-<version>-windows-portable.zip`.
+Send that ZIP to friends. On Windows 10/11 they extract the entire folder and double-click
+`Start.bat`; Node.js, npm, Python and internet access are not needed to play. The launcher
+uses built-in Windows PowerShell and opens the default browser. Keep its window open while
+playing, then close it to stop the local server. Edge or Chrome with WebGL is required.
+
+All game and font URLs are relative. The launcher resolves `game/` relative to its own script,
+so the extracted folder can be moved or renamed, including to paths with spaces and Chinese
+characters. It binds only to `127.0.0.1`, normally port 18746, and reuses an already running
+copy of the same build and folder. If that port is occupied, it tries the next 19 ports.
+Browser records and settings belong to the browser and address; a fallback port has separate
+records. No developer save data, source files, screenshots or development dependencies are
+included in the ZIP. Third-party license notices and file hashes are included.
+
+`npm run test:package` checks the extracted ZIP under a relocated Unicode path, its server,
+resource hashes, repeated launches and port collisions. Run `npm test` for gameplay checks.

@@ -21,6 +21,10 @@ Reference implementation: `src/game/bosses/gearjaw.ts` + `src/game/arenas/scrapy
 - Destructible cover: `CarStack` (props.ts) is a wall rect while standing; blasts, crushes or the arena (`collapse`) remove it.
 - Query helpers: `w.target()` (player or decoy), `w.raycast`, `w.rayWall`, `w.bodiesInCircle`, `w.moveCircle`, `w.explode`, `w.clearBullets`, `w.hitPlayer`, `w.damage`.
 
+### Local time fields
+
+`Arena.timeRates?(w)` can return `{ player, boss }` independently of global bullet time. World samples the rates once per step during active combat; entrances, transitions, stagger and death use normal actor rates. Player updates and player bullets use the player rate. Boss updates, enemy bodies, enemy bullets and boss-owned hazards use the boss rate. Neutral devices, zones and arena/custom-object updates retain world time. Custom enemy attack objects must explicitly multiply their delta by `w.bossRate` and `JAM_SLOW` when appropriate, as `MemoryCast` does. Keep field durations on the arena clock, telegraph a change before any hostile attack starts, and restore state on interruption.
+
 ## Boss class
 
 Extend `Boss` (`src/game/boss.ts`):

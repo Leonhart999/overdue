@@ -1,0 +1,259 @@
+GIMP Palette
+Name: OVERDUE
+Columns: 16
+# 255 opaque colors; transparency is separate.
+ 11  10  18 ink
+ 22  21  40 night
+ 34  33  63 navy
+ 47  45  88 indigo
+ 68  68 116 slate
+ 99 103 154 steel
+144 151 192 fog
+204 210 234 pale
+245 246 255 white
+ 44  24  51 plum
+ 77  37  96 grape
+142  61 146 orchid
+255  42 143 magenta
+255 155 210 rose
+ 13  52  66 abyss
+ 21 127 153 teal
+ 45 226 245 cyan
+192 248 255 ice
+ 27  68  41 moss
+ 70 165  43 lime
+168 255  60 acid
+101  20  39 maroon
+230  42  62 red
+ 59  33  25 umber
+140  63  29 rust
+224 122  31 orange
+255 171  56 sodium
+255 226 122 amber
+243 199 163 skinL
+208 141 104 skinM
+145  84  63 skinD
+ 85  48  42 skinX
+ 16  23  37 steelCool01
+ 34  43  59 steelCool02
+ 51  64  81 steelCool03
+ 69  84 104 steelCool04
+ 87 104 126 steelCool05
+104 125 148 steelCool06
+124 145 168 steelCool07
+146 165 185 steelCool08
+168 185 203 steelCool09
+190 204 220 steelCool10
+212 224 238 steelCool11
+234 244 255 steelCool12
+ 23  20  27 steelWarm01
+ 46  42  46 steelWarm02
+ 69  64  65 steelWarm03
+ 92  85  84 steelWarm04
+115 107 103 steelWarm05
+138 129 122 steelWarm06
+160 149 139 steelWarm07
+179 167 155 steelWarm08
+198 185 171 steelWarm09
+217 204 187 steelWarm10
+236 222 203 steelWarm11
+255 240 219 steelWarm12
+ 56  33  44 skinWarm01
+ 81  50  54 skinWarm02
+106  66  64 skinWarm03
+131  83  74 skinWarm04
+156  99  84 skinWarm05
+181 116  94 skinWarm06
+199 134 109 skinWarm07
+210 153 128 skinWarm08
+221 173 147 skinWarm09
+232 193 166 skinWarm10
+244 212 185 skinWarm11
+255 232 204 skinWarm12
+ 42  28  37 skinTan01
+ 65  42  44 skinTan02
+ 87  57  51 skinTan03
+110  71  58 skinTan04
+132  85  65 skinTan05
+155 100  72 skinTan06
+172 115  84 skinTan07
+185 131  99 skinTan08
+198 147 115 skinTan09
+211 164 131 skinTan10
+224 180 146 skinTan11
+237 196 162 skinTan12
+ 29  22  29 skinDeep01
+ 45  31  34 skinDeep02
+ 61  41  40 skinDeep03
+ 77  50  45 skinDeep04
+ 93  60  51 skinDeep05
+109  69  56 skinDeep06
+126  81  65 skinDeep07
+143  96  76 skinDeep08
+160 111  88 skinDeep09
+177 126 100 skinDeep10
+195 141 111 skinDeep11
+212 156 123 skinDeep12
+ 34  23  34 copper01
+ 58  34  38 copper02
+ 82  45  42 copper03
+107  56  46 copper04
+131  67  50 copper05
+155  78  54 copper06
+175  96  67 copper07
+191 121  89 copper08
+207 147 111 copper09
+223 173 132 copper10
+239 198 154 copper11
+255 224 176 copper12
+ 35  29  33 bronze01
+ 59  46  38 bronze02
+ 83  63  42 bronze03
+106  80  47 bronze04
+130  97  52 bronze05
+154 114  57 bronze06
+174 134  71 bronze07
+190 155  94 bronze08
+206 177 117 bronze09
+223 199 140 bronze10
+239 220 164 bronze11
+255 242 187 bronze12
+ 35  15  39 crimson01
+ 62  21  47 crimson02
+ 88  26  55 crimson03
+115  32  62 crimson04
+142  38  70 crimson05
+169  43  78 crimson06
+189  62  94 crimson07
+202  95 119 crimson08
+215 127 144 crimson09
+228 160 169 crimson10
+242 192 193 crimson11
+255 225 218 crimson12
+ 48  24  42 coral01
+ 82  38  51 coral02
+117  52  60 coral03
+151  67  69 coral04
+185  81  78 coral05
+220  95  87 coral06
+239 115 102 coral07
+242 140 124 coral08
+245 166 146 coral09
+248 191 169 coral10
+252 217 191 coral11
+255 242 213 coral12
+ 46  32  35 amberLight01
+ 75  51  38 amberLight02
+105  69  42 amberLight03
+134  88  45 amberLight04
+163 107  48 amberLight05
+192 126  51 amberLight06
+211 145  67 amberLight07
+220 166  95 amberLight08
+229 186 123 amberLight09
+238 206 151 amberLight10
+246 227 179 amberLight11
+255 247 207 amberLight12
+ 17  30  38 leaf01
+ 25  49  45 leaf02
+ 32  69  52 leaf03
+ 40  88  59 leaf04
+ 48 108  66 leaf05
+ 55 127  73 leaf06
+ 74 146  85 leaf07
+105 165 102 leaf08
+135 183 120 leaf09
+165 202 137 leaf10
+196 220 155 leaf11
+226 239 172 leaf12
+ 29  32  38 olive01
+ 47  51  43 olive02
+ 65  71  49 olive03
+ 82  90  54 olive04
+100 109  60 olive05
+118 128  65 olive06
+137 146  77 olive07
+158 163  96 olive08
+179 179 115 olive09
+200 196 134 olive10
+221 212 153 olive11
+242 229 172 olive12
+ 11  27  43 lagoon01
+ 15  47  63 lagoon02
+ 19  67  84 lagoon03
+ 23  88 104 lagoon04
+ 27 108 124 lagoon05
+ 31 128 145 lagoon06
+ 49 149 163 lagoon07
+ 82 170 178 lagoon08
+115 191 194 lagoon09
+148 212 210 lagoon10
+181 234 225 lagoon11
+214 255 241 lagoon12
+ 17  28  59 azure01
+ 25  45  86 azure02
+ 34  62 114 azure03
+ 42  79 141 azure04
+ 50  96 168 azure05
+ 59 113 195 azure06
+ 78 133 213 azure07
+107 155 222 azure08
+136 177 230 azure09
+165 198 238 azure10
+195 220 247 azure11
+224 242 255 azure12
+ 32  21  46 violet01
+ 50  34  70 violet02
+ 69  46  94 violet03
+ 87  59 118 violet04
+105  72 142 violet05
+124  85 166 violet06
+143 103 185 violet07
+163 128 199 violet08
+183 152 213 violet09
+204 176 227 violet10
+224 201 241 violet11
+244 225 255 violet12
+ 41  21  47 orchidLight01
+ 71  34  66 orchidLight02
+101  46  86 orchidLight03
+131  59 105 orchidLight04
+161  71 124 orchidLight05
+191  84 143 orchidLight06
+210 103 161 orchidLight07
+219 128 178 orchidLight08
+228 153 194 orchidLight09
+237 178 210 orchidLight10
+246 203 227 orchidLight11
+255 228 243 orchidLight12
+ 16  16  20 neutral01
+ 32  31  35 neutral02
+ 47  46  49 neutral03
+ 63  62  64 neutral04
+ 78  77  79 neutral05
+ 94  92  93 neutral06
+110 107 108 neutral07
+125 122 123 neutral08
+141 138 138 neutral09
+157 154 153 neutral10
+172 170 168 neutral11
+188 186 184 neutral12
+204 201 199 neutral13
+220 217 214 neutral14
+235 233 230 neutral15
+251 249 245 neutral16
+  8   9  16 midnight01
+ 12  14  23 midnight02
+ 16  18  29 midnight03
+ 20  23  36 midnight04
+ 23  28  43 midnight05
+ 27  33  50 midnight06
+ 31  37  56 midnight07
+ 35  42  63 midnight08
+ 40  48  69 midnight09
+ 46  54  75 midnight10
+ 51  60  81 midnight11
+ 56  65  88 midnight12
+ 61  71  94 midnight13
+ 67  77 100 midnight14
+ 72  83 106 midnight15

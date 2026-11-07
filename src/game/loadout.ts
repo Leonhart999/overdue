@@ -30,19 +30,20 @@ export const CYBER_POOL: CyberId[] = [
 ];
 
 export type ModId =
-  | 'riveter_barbed' | 'riveter_magnet'
-  | 'arc_mine' | 'arc_web'
-  | 'breacher_dragon' | 'breacher_recoil'
-  | 'blade_return' | 'blade_afterimage';
+  | 'riveter_barbed' | 'riveter_magnet' | 'riveter_blast'
+  | 'arc_mine' | 'arc_web' | 'arc_aftershock'
+  | 'breacher_dragon' | 'breacher_recoil' | 'breacher_overload'
+  | 'blade_return' | 'blade_afterimage' | 'blade_flow';
 
-export const WEAPON_MODS: Record<WeaponId, ModId[]> = {
-  riveter: ['riveter_barbed', 'riveter_magnet'],
-  arc: ['arc_mine', 'arc_web'],
-  breacher: ['breacher_dragon', 'breacher_recoil'],
-  blade: ['blade_return', 'blade_afterimage'],
+/** Every weapon has exactly three available modifications. */
+export const WEAPON_MODS: Record<WeaponId, readonly [ModId, ModId, ModId]> = {
+  riveter: ['riveter_barbed', 'riveter_magnet', 'riveter_blast'],
+  arc: ['arc_mine', 'arc_web', 'arc_aftershock'],
+  breacher: ['breacher_dragon', 'breacher_recoil', 'breacher_overload'],
+  blade: ['blade_return', 'blade_afterimage', 'blade_flow'],
 };
 
-export type BossId = 'gearjaw' | 'lux' | 'octohydra' | 'kade' | 'vesper';
+export type BossId = 'gearjaw' | 'lux' | 'octohydra' | 'kade' | 'vesper' | 'kairo' | 'fold';
 
 export interface Loadout {
   weapon: WeaponId;

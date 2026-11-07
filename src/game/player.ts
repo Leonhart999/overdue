@@ -126,9 +126,10 @@ export class Player {
 
     if (this.forced) {
       const f = this.forced;
-      f.t -= dt;
+      const moveDt = Math.min(dt, f.t);
+      f.t -= moveDt;
       if (f.iframes) this.iframes = Math.max(this.iframes, 0.05);
-      w.moveCircle(this, f.vx * dt, f.vy * dt, { solids: f.solids });
+      w.moveCircle(this, f.vx * moveDt, f.vy * moveDt, { solids: f.solids });
       if (f.t <= 0) this.forced = null;
       this.moving = true;
     } else {

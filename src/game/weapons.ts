@@ -6,9 +6,10 @@
  *   blade    — slashes reflect every bullet; iaido cuts through a line and severs cables.
  */
 import { audio } from '../engine/audio';
+import { BLADE_TEXT, BREACHER_TEXT } from '../data/text';
 import { COL, P, type Gfx } from '../engine/gfx';
 import type { InputState } from '../engine/input';
-import { angleDiff, angleTo, clamp, dist, norm, segmentsCross, segDist } from '../engine/math';
+import { angleDiff, angleTo, clamp, dist, norm, segmentsCross, segDist, pointInRect, type Rect } from '../engine/math';
 import type { Body } from './body';
 import { Bullet } from './bullet';
 import { FirePatch, Hazard } from './hazard';
@@ -39,6 +40,8 @@ export abstract class Weapon {
   dispose(): void {}
   /** Arc caster only: the bodies the current arc chains through, player side first (empty otherwise). */
   chainNodes(): readonly Body[] { return []; }
+  /** Move deployments anchored to a translating floor; projectiles keep their flight path. */
+  carryFloor(_area: Rect, _dx: number, _dy: number): void {}
 
   muzzle(p: Player, len: number): [number, number] {
     return [p.handX + Math.cos(p.aim) * len, p.handY + Math.sin(p.aim) * len];
@@ -168,6 +171,11 @@ class Riveter extends Weapon {
     if (inp.altPressed && this.recallCd <= 0 && (this.stuck.length || this.flyingNails(w).length)) this.recall(w, p, inp);
   }
 
+  carryFloor(area: Rect, dx: number, dy: number): void {
+    for (const s of this.stuck) if (!s.body && pointInRect(s.x, s.y, area)) { s.x += dx; s.y += dy; }
+    if (this.magnet && pointInRect(this.magnet.x, this.magnet.y, area)) { this.magnet.x += dx; this.magnet.y += dy; }
+  }
+
   private flyingNails(w: World): NailBullet[] {
     return w.bullets.filter((b): b is NailBullet => b instanceof NailBullet && !b.dead);
   }
@@ -201,6 +209,16 @@ class Riveter extends Weapon {
     let rips = 0;
     const tx = this.magnet?.x ?? p.x, ty = this.magnet?.y ?? p.y;
     const drag = new Map<Body, number>();
+    const blasts = new Map<Body, { x: number; y: number; n: number }>();
+    if (this.has('riveter_blast')) {
+      for (const s of this.stuck) {
+        const b = s.body;
+        if (!b || b.dead) continue;
+        const batch = blasts.get(b);
+        if (batch) batch.n++;
+        else blasts.set(b, { x: b.x, y: b.y - b.hz * 0.5, n: 1 });
+      }
+    }
     for (const n of this.flyingNails(w)) { n.dead = true; this.spawnReturn(w, p, n.x, n.y); }
     for (const s of this.stuck) {
       const [x, y] = this.pos(s);
@@ -222,6 +240,10 @@ class Riveter extends Weapon {
       b.vx = nx * sp; b.vy = ny * sp;
     }
     this.stuck = [];
+    for (const { x, y, n } of blasts.values()) {
+      if (n < 4) continue;
+      w.explode(x, y, 40, { enemyDmg: 6 * n * p.dmgMul, poise: Math.min(12, n * 1.2), from: 'player', src: 'nail_blast', knock: 180 });
+    }
     w.sfx('recall');
     if (rips) {
       w.sfx('rip', Math.min(1.5, 0.6 + rips * 0.08));
@@ -252,7 +274,7 @@ class Riveter extends Weapon {
     if (this.w !== w) return;
     for (const s of this.stuck) {
       const [x, y] = this.pos(s);
-      if (s.body) g.img('proj', 'nail_stuck', x, y, { layer: 'top', ox: 0.7, oy: 0.5, rot: s.ang });
+      if (s.body) g.img('proj', 'nail_stuck', x, y, { layer: 'top', ox: 0.7, oy: 0.5, rot: s.ang, tint: this.has('riveter_blast') && s.body.nails >= 4 ? P.orange : undefined });
       else g.img('proj', 'nail_stuck', x, y, { layer: 'floor', ox: 0.7, oy: 0.5, rot: s.ang });
     }
     if (this.magnet) g.ring(this.magnet.x, this.magnet.y, 5 + Math.sin(w.realTime * 20), 1, P.cyan, 0.8, 'top');
@@ -263,6 +285,64 @@ class Riveter extends Weapon {
 // =====================================================================================
 // ARC CASTER
 // =====================================================================================
+/** A fixed residual field: six pulses, without charging the weapon or repeating EMP. */
+class ArcAftershock {
+  dead = false;
+  private age = 0;
+  private nextPulse = 0.5;
+  private flash = 0;
+  readonly r = 56;
+
+  constructor(readonly x: number, readonly y: number, private readonly dmgMul: number) {}
+
+  update(w: World, dt: number): void {
+    if (w.state !== 'fight') { this.dead = true; return; }
+    this.age = Math.min(3, this.age + dt);
+    this.flash = Math.max(0, this.flash - dt);
+    while (this.nextPulse <= this.age + 1e-8 && this.nextPulse <= 3) {
+      this.nextPulse += 0.5;
+      this.pulse(w);
+    }
+    if (this.age >= 3 - 1e-8) this.dead = true;
+  }
+
+  private pulse(w: World): void {
+    this.flash = 0.18;
+    for (const b of w.bodies) {
+      if (b.dead || dist(this.x, this.y, b.hx, b.hy) > this.r + b.hr) continue;
+      if (b.team === 'enemy') {
+        w.damage(b, { dmg: 8 * this.dmgMul, kind: 'shock', x: b.hx, y: b.hy, poise: 1.5, from: 'player', src: 'aftershock' });
+      }
+      b.onShock?.(w, 16, 0.5);
+    }
+    w.clearBullets(this.x, this.y, this.r, true);
+    w.fx.ring(this.x, this.y, 8, this.r, P.ice, 0.22, 2);
+    w.fx.glow(this.x, this.y, this.r, P.cyan, 0.12);
+    w.sfx('zap', 0.3, 0.85);
+  }
+
+  draw(g: Gfx): void {
+    const fade = Math.min(1, (3 - this.age) * 2);
+    g.circle(this.x, this.y, this.r, P.teal, 0.12 * fade, 'floor');
+    g.ring(this.x, this.y, this.r, 1, P.cyan, 0.45 * fade, 'floor');
+    g.ring(this.x, this.y, this.r * 0.6, 1, P.teal, 0.3 * fade, 'floor');
+  }
+
+  drawTop(g: Gfx): void {
+    const fade = Math.min(1, (3 - this.age) * 2);
+    if (this.flash <= 0) return;
+    for (let i = 0; i < 6; i++) {
+      const a = i * Math.PI / 3 + this.age * 0.8;
+      const x = this.x + Math.cos(a) * this.r, y = this.y + Math.sin(a) * this.r;
+      const mx = this.x + Math.cos(a + 0.25) * this.r * 0.5;
+      const my = this.y + Math.sin(a + 0.25) * this.r * 0.5;
+      const alpha = this.flash / 0.18 * fade;
+      g.line(this.x, this.y, mx, my, 1, P.ice, alpha, 'top');
+      g.line(mx, my, x, y, 1, P.cyan, alpha, 'top');
+    }
+  }
+}
+
 class ArcOrb extends Bullet {
   private stopped = false;
   private fuse = 0.7;
@@ -271,7 +351,7 @@ class ArcOrb extends Bullet {
   private oy = 0;
   private armed = 0;
   private mineLife = 8;
-  constructor(x: number, y: number, private tx: number, private ty: number, private power: number, private mine: boolean, private p: Player) {
+  constructor(x: number, y: number, private tx: number, private ty: number, private power: number, private mine: boolean, private p: Player, private aftershock: boolean) {
     super(x, y, 0, 0, 'player');
     const [nx, ny] = norm(tx - x, ty - y);
     this.vx = nx * 360; this.vy = ny * 360;
@@ -325,6 +405,7 @@ class ArcOrb extends Bullet {
       }
       b.onEmp?.(w);
     }
+    if (this.aftershock) w.objects.push(new ArcAftershock(this.x, this.y, this.p.dmgMul));
     w.clearBullets(this.x, this.y, R, true);
     w.fx.ring(this.x, this.y, 6, R, P.ice, 0.3, 3);
     w.fx.glow(this.x, this.y, R, P.cyan, 0.3);
@@ -361,7 +442,7 @@ class ArcCaster extends Weapon {
         const [mx, my] = this.muzzle(p, 8);
         const d = Math.min(175, dist(mx, my, inp.ax, inp.ay));
         const tx = mx + Math.cos(p.aim) * d, ty = my + Math.sin(p.aim) * d;
-        w.addBullet(new ArcOrb(mx, my, tx, ty, this.charge, this.has('arc_mine'), p));
+        w.addBullet(new ArcOrb(mx, my, tx, ty, this.charge, this.has('arc_mine'), p, this.has('arc_aftershock')));
         this.charge = 0;
         w.sfx('charge');
       } else {
@@ -455,17 +536,20 @@ class ArcCaster extends Weapon {
 // =====================================================================================
 // BREACHER
 // =====================================================================================
+// Nearby impacts refresh one patch instead of stacking a full pellet volley of fire damage.
+class DragonFirePatch extends FirePatch {}
+
 class Pellet extends Bullet {
   private sx: number;
   private sy: number;
-  constructor(x: number, y: number, vx: number, vy: number, p: Player, dragon: boolean) {
+  constructor(x: number, y: number, vx: number, vy: number, p: Player, dragon: boolean, private readonly rangeScale = 1) {
     super(x, y, vx, vy, 'player');
     this.sx = x; this.sy = y;
     this.r = 2;
     this.dmg = 6 * p.dmgMul * (dragon ? 0.8 : 1);
     this.poise = 0.7;
     this.frame = dragon ? 'pellet_fire' : 'pellet';
-    this.life = 0.27;
+    this.life = 0.27 * rangeScale;
     this.src = 'pellet';
     this.cancelsSoft = true;
     this.softPierce = 1; // each pellet breaks two soft bullets
@@ -474,7 +558,7 @@ class Pellet extends Bullet {
     this.homing = p.homing;
   }
   onHitBody(w: World, b: Body): void {
-    const travelled = dist(this.sx, this.sy, this.x, this.y);
+    const travelled = dist(this.sx, this.sy, this.x, this.y) / this.rangeScale;
     const fall = 1 - clamp((travelled - 45) / 110, 0, 0.7);
     const sp = this.speed || 1;
     const enemy = b.team === 'enemy';
@@ -482,23 +566,38 @@ class Pellet extends Bullet {
       dmg: enemy ? this.dmg * fall : 1, kind: 'bullet', x: this.x, y: this.y, dx: this.vx / sp, dy: this.vy / sp,
       poise: this.poise, from: 'player', src: 'pellet', knock: this.knock, ignite: this.ignite,
     });
+    this.igniteGround(w, this.x, b.y);
     this.dead = true;
   }
-  onExpire(w: World): void {
-    if (this.ignite && w.rng.chance(0.3)) w.objects.push(new FirePatch(this.x, this.y + 6, 9, 2.5, 'player'));
+  onWall(w: World): void {
+    super.onWall(w);
+    this.igniteGround(w);
+  }
+  onExpire(w: World): void { this.igniteGround(w); }
+
+  private igniteGround(w: World, x = this.x, y = this.y + 6): void {
+    if (!this.ignite) return;
+    [x, y] = w.clampToBounds(x, y, 9);
+    for (const o of w.objects) {
+      if (o instanceof DragonFirePatch && !o.dead && dist(x, y, o.x, o.y) < 18) {
+        o.t = 0;
+        return;
+      }
+    }
+    w.objects.push(new DragonFirePatch(x, y, 9, 2.5, 'player'));
   }
 }
 
 class Slug extends Bullet {
-  constructor(x: number, y: number, vx: number, vy: number, p: Player, shells: number) {
+  constructor(x: number, y: number, vx: number, vy: number, p: Player, shells: number, private readonly explosive: boolean, rangeScale: number) {
     super(x, y, vx, vy, 'player');
     this.r = 4;
-    this.dmg = 40 * shells * p.dmgMul;
+    this.dmg = 40 * shells * p.dmgMul * (explosive ? 1.6 : 1);
     this.poise = 15 * shells;
     this.armorBreak = 1;
     this.frame = 'slug';
     this.rotates = true;
-    this.life = 0.6;
+    this.life = 0.6 * rangeScale;
     this.pierce = Infinity;
     this.src = 'slug';
     this.cancelsSoft = true;
@@ -511,9 +610,13 @@ class Slug extends Bullet {
     const enemy = b.team === 'enemy';
     w.damage(b, { dmg: enemy ? this.dmg : 2, kind: 'impact', x: this.x, y: this.y, dx: this.vx / sp, dy: this.vy / sp, poise: this.poise, armorBreak: this.armorBreak, from: 'player', src: 'slug', knock: this.knock, srcId: this.id });
     w.fx.sparks(this.x, this.y, 8, P.amber, 160, Math.atan2(this.vy, this.vx), 1);
+    if (this.explosive) w.fx.explosion(this.x, this.y, 14);
     if (enemy) w.hitstop = Math.max(w.hitstop, 0.05);
   }
   onWall(w: World): void {
+    // Penetrate interior walls and cover; stop only at the arena boundary.
+    const b = w.bounds;
+    if (this.x >= b.x && this.x <= b.x + b.w && this.y >= b.y && this.y <= b.y + b.h) return;
     this.dead = true;
     w.fx.sparks(this.x, this.y, 10, P.amber, 140);
     w.fx.shake(2, 0.1);
@@ -555,14 +658,17 @@ class Breacher extends Weapon {
 
   private blast(w: World, p: Player): void {
     const dragon = this.has('breacher_dragon');
+    const rampage = this.has('breacher_overload');
+    const pellets = rampage ? 15 : 8;
+    const rangeScale = rampage ? 1.2 : 1;
     this.shells--;
     this.fireCd = 0.3 / p.fireRateMul;
     this.idleT = 0;
     const [mx, my] = this.muzzle(p, 13);
-    for (let i = 0; i < 8; i++) {
+    for (let i = 0; i < pellets; i++) {
       const a = p.aim + (w.rng.next() - 0.5) * 0.46;
       const sp = 470 + w.rng.next() * 110;
-      w.addBullet(new Pellet(mx, my, Math.cos(a) * sp, Math.sin(a) * sp, p, dragon));
+      w.addBullet(new Pellet(mx, my, Math.cos(a) * sp, Math.sin(a) * sp, p, dragon, rangeScale));
     }
     this.kick = 4;
     w.fx.glow(mx, my, 14, P.amber, 0.08);
@@ -571,32 +677,33 @@ class Breacher extends Weapon {
     w.fx.debris(p.x, p.y - 10, 1, [P.red]);
     w.fx.shake(2, 0.08);
     w.sfx('shotgun');
-    const back = this.has('breacher_recoil') ? 300 : 0;
-    if (back) p.forced = { vx: -Math.cos(p.aim) * back, vy: -Math.sin(p.aim) * back, t: 0.1, iframes: false, solids: true };
-    else { p.vx -= Math.cos(p.aim) * 60; p.vy -= Math.sin(p.aim) * 60; }
+    p.vx -= Math.cos(p.aim) * 60; p.vy -= Math.sin(p.aim) * 60;
   }
 
   private slug(w: World, p: Player): void {
     const n = this.shells;
+    const recoil = this.has('breacher_recoil');
+    const rangeScale = this.has('breacher_overload') ? 1.2 : 1;
     this.shells = 0;
     this.reloadT = 0;
     this.fireCd = 0.35;
     this.idleT = 0;
     const [mx, my] = this.muzzle(p, 13);
-    w.addBullet(new Slug(mx, my, Math.cos(p.aim) * 640, Math.sin(p.aim) * 640, p, n));
+    w.addBullet(new Slug(mx, my, Math.cos(p.aim) * 640, Math.sin(p.aim) * 640, p, n, recoil, rangeScale));
     this.kick = 6;
     w.fx.glow(mx, my, 20, P.amber, 0.1);
     w.fx.burst(mx, my, 10, P.amber, 200, 0.2, 2, p.aim, 0.4);
     w.fx.shake(4, 0.12);
     w.sfx('slug');
-    if (this.has('breacher_recoil')) {
-      p.forced = { vx: -Math.cos(p.aim) * 640, vy: -Math.sin(p.aim) * 640, t: 0.19, iframes: true, solids: true };
-      p.beginDodge(w, 0.22);
-    }
+    const duration = recoil ? 0.2 : 0.1;
+    const speed = (recoil ? 80 : 20) / duration;
+    p.vx = 0; p.vy = 0;
+    p.forced = { vx: -Math.cos(p.aim) * speed, vy: -Math.sin(p.aim) * speed, t: duration, iframes: recoil, solids: true };
+    if (recoil) p.beginDodge(w, duration);
   }
 
   hud(): WeaponHud {
-    return { ammo: this.shells, ammoMax: 2, special: this.shells > 0 ? 1 : 0, text: this.reloadT > 0 ? '装填' : '' };
+    return { ammo: this.shells, ammoMax: 2, special: this.shells > 0 ? 1 : 0, text: this.reloadT > 0 ? BREACHER_TEXT.reloading : this.has('breacher_overload') ? BREACHER_TEXT.rampage : '' };
   }
 }
 
@@ -626,14 +733,27 @@ class Monoblade extends Weapon {
   private lastEnd = -9;
   private buffer = 0;
   iaidoCd = 0;
+  /** Match the current dodge to the iaido that started it, excluding legs/grapple dodges. */
+  private iaidoDodgeStart = -Infinity;
+  private iaidoCanReturn = false;
+  private returnReady = false;
+  private altBuffer = 0;
+  private instantUntil = -Infinity;
+  private realClock = 0;
+  private get instantIaido(): boolean { return this.realClock < this.instantUntil; }
   private charging = false;
   private chargeT = 0;
-  private iaidoFx: { x1: number; y1: number; x2: number; y2: number; t: number } | null = null;
+  private iaidoFx: { x1: number; y1: number; x2: number; y2: number; t: number; lightReturn: boolean } | null = null;
   private clock = 0;
 
   update(w: World, p: Player, inp: InputState, dt: number, canFire: boolean): void {
     this.clock += dt;
-    if (this.iaidoCd > 0) this.iaidoCd -= dt;
+    this.realClock = w.realTime;
+    if (this.iaidoCd > 0) this.iaidoCd = Math.max(0, this.iaidoCd - dt);
+    // The second cut belongs to this cooldown cycle, not a permanent banked attack.
+    if (this.iaidoCd <= 0 && !this.instantIaido) this.returnReady = false;
+    this.altBuffer = Math.max(0, this.altBuffer - dt);
+    if (inp.altPressed && (this.returnReady || this.instantIaido)) this.altBuffer = 0.2;
     if (this.iaidoFx) { this.iaidoFx.t -= dt; if (this.iaidoFx.t <= 0) this.iaidoFx = null; }
     if (inp.firePressed) this.buffer = 0.2;
     if (this.buffer > 0) this.buffer -= dt;
@@ -646,7 +766,16 @@ class Monoblade extends Weapon {
     if (this.buffer > 0 && canFire && !this.charging && (this.swingT < 0 || this.swingT > this.swingDur * 0.8)) this.startSwing(w, p);
 
     // iaido
-    if (canFire && inp.altPressed && this.iaidoCd <= 0 && !this.charging) { this.charging = true; this.chargeT = 0; }
+    if (canFire && !this.charging) {
+      if ((inp.altPressed || this.altBuffer > 0) && (this.returnReady || this.instantIaido)) {
+        const lightReturn = this.returnReady;
+        this.altBuffer = 0;
+        this.iaido(w, p, lightReturn);
+      } else if (inp.altPressed && this.iaidoCd <= 0) {
+        this.charging = true;
+        this.chargeT = 0;
+      }
+    }
     if (this.charging) {
       this.chargeT += dt;
       p.slow = Math.min(p.slow, 0.35);
@@ -707,18 +836,22 @@ class Monoblade extends Weapon {
     });
   }
 
-  private iaido(w: World, p: Player): void {
+  private iaido(w: World, p: Player, lightReturn = false): void {
     const a = p.aim, dx = Math.cos(a), dy = Math.sin(a);
     const len = Math.max(0, Math.min(120, w.rayWall(p.x, p.y, dx, dy, 140) - 8));
     const x1 = p.x, y1 = p.y - 8, x2 = p.x + dx * len, y2 = p.y - 8 + dy * len;
     p.forced = { vx: dx * len / 0.08, vy: dy * len / 0.08, t: 0.08, iframes: true, solids: false };
     p.beginDodge(w, 0.2);
-    this.iaidoCd = this.has('blade_afterimage') ? 3 : 4;
-    this.iaidoFx = { x1, y1, x2, y2, t: 0.25 };
-    const hits = this.lineDamage(w, p, x1, y1, x2, y2, 70, 32);
+    this.iaidoDodgeStart = p.dashStart;
+    this.iaidoCanReturn = !lightReturn;
+    this.returnReady = false;
+    this.iaidoCd = this.instantIaido ? 0 : 3;
+    this.iaidoFx = { x1, y1, x2, y2, t: 0.25, lightReturn };
+    const dmg = lightReturn ? 105 : 70;
+    const hits = this.lineDamage(w, p, x1, y1, x2, y2, dmg, 32);
     cutCables(w, (c) => segmentsCross(x1, y1, x2, y2, c.x1, c.y1, c.x2, c.y2));
-    w.sfx('iaido');
-    w.fx.shake(hits ? 5 : 2, 0.15);
+    w.sfx('iaido', 1, lightReturn ? 1.2 : 1);
+    w.fx.shake(hits ? (lightReturn ? 6 : 5) : 2, 0.15);
     if (hits) { w.hitstop = Math.max(w.hitstop, 0.08); w.slowmo(0.5, 0.12); }
     if (this.has('blade_afterimage')) {
       const h = new Hazard({ k: 'line', x1, y1, x2, y2, w: 14 }, 0.5, 0.05);
@@ -726,7 +859,7 @@ class Monoblade extends Weapon {
       h.hitsPlayer = false;
       h.color = P.cyan;
       h.onActivate = (ww) => {
-        this.lineDamage(ww, p, x1, y1, x2, y2, 49, 18);
+        this.lineDamage(ww, p, x1, y1, x2, y2, dmg * 0.7, 18);
         ww.fx.sparks((x1 + x2) / 2, (y1 + y2) / 2, 16, P.ice, 180);
         ww.sfx('slash', 1, 0.7);
       };
@@ -750,9 +883,31 @@ class Monoblade extends Weapon {
     return n;
   }
 
-  onPerfectDodge(): void { this.iaidoCd = 0; }
+  onPerfectDodge(w: World, p: Player): void {
+    this.realClock = w.realTime;
+    const duringIaido = p.dashStart === this.iaidoDodgeStart;
+    if (duringIaido && this.iaidoCanReturn) this.returnReady = true;
+    // Flow starts with an iaido dodge; any perfect dodge within Flow refreshes it.
+    if (this.has('blade_flow') && (duringIaido || this.instantIaido)) {
+      this.instantUntil = w.realTime + 1;
+      this.iaidoCd = 0;
+    }
+  }
 
-  hud(): WeaponHud { return { special: this.iaidoCd > 0 ? 1 - this.iaidoCd / (this.has('blade_afterimage') ? 3 : 4) : 1 }; }
+  dispose(): void {
+    this.charging = false;
+    this.returnReady = false;
+    this.iaidoCanReturn = false;
+    this.altBuffer = 0;
+    this.instantUntil = -Infinity;
+  }
+
+  hud(): WeaponHud {
+    return {
+      special: this.returnReady || this.instantIaido ? 1 : Math.max(0, 1 - this.iaidoCd / 3),
+      text: this.returnReady ? BLADE_TEXT.lightReturn : this.instantIaido ? `${BLADE_TEXT.flow} ${Math.ceil(this.instantUntil - this.realClock)}s` : '',
+    };
+  }
 
   draw(g: Gfx, w: World, p: Player, depth: number): void {
     let rot = p.aim;
@@ -769,11 +924,13 @@ class Monoblade extends Weapon {
       }
     }
     if (this.charging && this.chargeT >= 0.22) g.circle(p.handX, p.handY, 6, P.white, 0.45, 'light');
+    if (this.instantIaido) g.circle(p.handX, p.handY, 7, P.cyan, 0.4, 'light');
+    if (this.returnReady) g.circle(p.handX, p.handY, 5, P.amber, 0.5, 'light');
     g.img('wpn', 'blade', p.handX, p.handY, { ox: 0.15, oy: 0.5, rot, flipY: Math.cos(rot) < 0, depth });
     const f = this.iaidoFx;
     if (f) {
       const a = f.t / 0.25;
-      g.line(f.x1, f.y1, f.x2, f.y2, 5 * a, P.ice, 0.4 * a, 'top');
+      g.line(f.x1, f.y1, f.x2, f.y2, (f.lightReturn ? 7 : 5) * a, f.lightReturn ? P.amber : P.ice, 0.4 * a, 'top');
       g.line(f.x1, f.y1, f.x2, f.y2, 1, P.white, a, 'top');
     }
     void w;

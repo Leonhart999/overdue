@@ -16,7 +16,7 @@
  * Inside one layer, shapes sit below images, and images below texts (each kind is one pooled
  * object list). Crisp text (see `crisp`) is drawn as an image.
  */
-import { PALETTE } from '../art/palette';
+import { PALETTE, type ColorName } from '../art/palette';
 
 export type Layer = 'floor' | 'world' | 'top' | 'light' | 'ui' | 'over';
 
@@ -102,10 +102,7 @@ export interface Gfx {
 }
 
 /** Palette colours as 0xRRGGBB numbers, by palette name. */
-export const P = Object.fromEntries(PALETTE.map((p) => [p.name, parseInt(p.hex.slice(1), 16)])) as Record<
-  'ink' | 'night' | 'navy' | 'indigo' | 'slate' | 'steel' | 'fog' | 'pale' | 'white' | 'plum' | 'grape' | 'orchid' |
-  'magenta' | 'rose' | 'abyss' | 'teal' | 'cyan' | 'ice' | 'moss' | 'lime' | 'acid' | 'maroon' | 'red' | 'umber' |
-  'rust' | 'orange' | 'sodium' | 'amber' | 'skinL' | 'skinM' | 'skinD' | 'skinX', number>;
+export const P = Object.fromEntries(PALETTE.map((p) => [p.name, parseInt(p.hex.slice(1), 16)])) as Record<ColorName, number>;
 
 /** Semantic colours. Keep the meaning consistent everywhere. */
 export const COL = {

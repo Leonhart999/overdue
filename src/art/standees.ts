@@ -2,7 +2,8 @@
  * Standees (立绘): large half-body character portraits for intro cards, the hub and the result screen.
  *
  *   standee  112x144  echo, echo_hurt, echo_win, gearjaw, gearjaw_p2, lux, lux_p2,
- *                     octohydra, octohydra_p2, kade, kade_p2, vesper, vesper_p2
+ *                     octohydra, octohydra_p2, kade, kade_p2, vesper, vesper_p2,
+ *                     kairo, kairo_p2, fold, fold_p2
  *
  * Shared lighting so the cast reads as one set: key light from the upper left front, a neon rim
  * light on the right-hand silhouette edge in each character's signature colour. Echo turns 3/4
@@ -17,6 +18,7 @@
  * Details (eyes, glowing seams, text) are fixed palette pixels painted on top.
  */
 import { C } from './palette';
+import { buildExpansionStandeeFrames } from './expansion';
 import { grid, legend, type Legend } from './core/grid';
 import { Mask, PixBuf, type Pt } from './core/pixbuf';
 import { bayer, hash2 } from './core/rng';
@@ -31,6 +33,8 @@ export const STANDEE_H = 144;
  * The bottom rows are cropped by the frame on purpose; anchor cards at the bottom edge.
  */
 export const STANDEE_FOCUS: Record<string, { face: Pt; glow: Pt[] }> = {
+  kairo: { face: [51, 40], glow: [[61, 40], [55, 103], [17, 53]] },
+  fold: { face: [48, 49], glow: [[38, 49], [55, 127]] },
   echo: { face: [57, 46], glow: [[62, 47], [87, 88]] }, // glows: cyber eye, shoulder joint seam
   gearjaw: { face: [47, 37], glow: [[41, 37], [53, 37], [56, 136]] }, // last glow: P2 engine
   lux: { face: [55, 48], glow: [[26, 51], [58, 48]] },
@@ -1592,6 +1596,7 @@ export function buildStandeeArt(): SheetSpec[] {
     { name: 'kade_p2', buf: kade(true) },
     { name: 'vesper', buf: vesper(false) },
     { name: 'vesper_p2', buf: vesper(true) },
+    ...buildExpansionStandeeFrames(),
   ];
   return [{
     key: 'standee', group: 'Standees', frameW: W, frameH: H, columns: 6, frames,

@@ -20,6 +20,9 @@ import type { Cable, Hit } from './types';
 export const SCREEN_W = 640;
 export const SCREEN_H = 360;
 
+/** Local actor clocks multiply global bullet time without changing the arena's own clock. */
+export interface TimeRates { player: number; boss: number }
+
 export interface Arena {
   id: string;
   /** Background texture (floor + walls), the size of the whole map (`size`, default one screen). */
@@ -35,6 +38,8 @@ export interface Arena {
   /** Add props, zones and arena objects. Called once before the boss spawns. */
   setup(w: World): void;
   update?(w: World, dt: number): void;
+  /** Optional local time fields. Read once per step; entrances and disabled bosses ignore them. */
+  timeRates?(w: World): TimeRates;
   /** Drawn after the floor, before bodies (decals). */
   drawFloor?(g: Gfx, w: World): void;
   /** Drawn above everything in the world (overhead crane, lights). */
@@ -80,6 +85,9 @@ export class World {
   realTime = 0;
   /** Global slow motion (bullet time) — 1 = normal. */
   timeScale = 1;
+  /** Actor rates sampled this step, independent of global slow motion. */
+  playerRate = 1;
+  bossRate = 1;
   private slowT = 0;
   private slowTarget = 1;
   /** When true the player ignores timeScale (reflex booster). */
@@ -206,15 +214,19 @@ export class World {
     this.stateT += dt;
     this.prompt = null;
 
-    this.player.update(this, input, this.playerUnscaled ? dt : wdt);
-    if (this.boss && this.state !== 'intro') this.boss.update(this, wdt);
+    const rates = this.state === 'fight' && this.boss && !this.boss.dying && !this.boss.staggered && !this.boss.inTransition
+      ? this.arena.timeRates?.(this) : undefined;
+    this.playerRate = clamp(rates?.player ?? 1, 0.1, 4);
+    this.bossRate = clamp(rates?.boss ?? 1, 0.1, 4);
+    this.player.update(this, input, (this.playerUnscaled ? dt : wdt) * this.playerRate);
+    if (this.boss && this.state !== 'intro') this.boss.update(this, wdt * this.bossRate);
     else if (this.boss && this.state === 'intro') this.boss.introUpdate(this, wdt);
-    for (const b of this.bodies) if (!b.dead) b.update(this, wdt);
+    for (const b of this.bodies) if (!b.dead) b.update(this, wdt * (b.team === 'enemy' ? this.bossRate : 1));
     // a jammed boss is slowed as a whole: its own bullets and telegraphs too
     const jam = this.boss && this.boss.jamT > 0 && !this.boss.dying ? JAM_SLOW : 1;
-    for (const b of this.bullets) if (!b.dead) b.update(this, b.team === 'enemy' ? wdt * jam : wdt);
+    for (const b of this.bullets) if (!b.dead) b.update(this, b.team === 'enemy' ? wdt * jam * this.bossRate : wdt * this.playerRate);
     this.cancelSoftBullets();
-    for (const h of this.hazards) if (!h.dead) h.update(this, h.owner && h.owner === this.boss ? wdt * jam : wdt);
+    for (const h of this.hazards) if (!h.dead) h.update(this, h.owner && h.owner === this.boss ? wdt * jam * this.bossRate : wdt);
     this.updateZones(wdt);
     this.arena.update?.(this, wdt);
     for (const o of this.objects) if (!o.dead) o.update(this, wdt);

@@ -21,15 +21,19 @@ export const WEAPON_TEXT: Record<WeaponId, { name: string; tag: string; primary:
     name: '霰弹枪',
     tag: '近距压制 · 推物体',
     primary: '8 颗弹丸，2 发后自动装填，距离越近伤害越高。弹丸会推开物体、击碎软弹。',
-    special: '独头弹：打光剩余子弹，穿透一切，击飞物体，打掉护甲。',
+    special: '独头弹：打光剩余子弹，穿透一切，击飞物体，打碎护甲。后坐力 20 像素。',
   },
   blade: {
     name: '单分子刀',
     tag: '弹反 · 高风险',
     primary: '三段斩，第三段向前突进。挥刀时把碰到的子弹全部弹回去。',
-    special: '拔刀：按住蓄力后松开，瞬间斩穿一条直线，全程无敌，能切断钢缆。冷却 4 秒，完美闪避后立即重置。',
+    special: '拔刀：按住蓄力后松开，瞬间斩穿一条直线，连钢缆都能切断，全程无敌。拔刀期间完美闪避，可立即进行二段拔刀·光返（150% 伤害）。拔刀冷却 3 秒。',
   },
 };
+
+export const BREACHER_TEXT = { reloading: '装填', rampage: '狂暴模式' } as const;
+
+export const BLADE_TEXT = { lightReturn: '光返', flow: '心流' } as const;
 
 export const SLOT_TEXT: Record<Slot, { name: string; key: string }> = {
   legs: { name: '腿', key: '空格' },
@@ -61,12 +65,16 @@ export const CYBER_TEXT: Record<CyberId, { name: string; desc: string }> = {
 export const MOD_TEXT: Record<ModId, { name: string; desc: string }> = {
   riveter_barbed: { name: '倒刺', desc: '钉在头目身上的钉子，每根每秒造成 0.8 伤害。' },
   riveter_magnet: { name: '磁轨', desc: '回收时钉子飞向按下右键时的准星位置，而不是你。' },
+  riveter_blast: { name: '爆破钉', desc: '一次从同一目标回收至少 4 枚钉子，触发半径 40 的爆炸；每枚钉子额外 6 伤害。' },
   arc_mine: { name: '电容地雷', desc: '过载电球落地后变成地雷，头目靠近才爆炸（最多等 8 秒），伤害 ×1.5。' },
   arc_web: { name: '导体网', desc: '电弧多跳 3 次。从金属柱、油桶跳出的距离 ×1.6。' },
-  breacher_dragon: { name: '龙息', desc: '弹丸点燃油桶和地面，留下 2.5 秒的火（只烧头目）。弹丸伤害 −20%。' },
-  breacher_recoil: { name: '反冲', desc: '开火把你向后推。独头弹把你弹飞约 120 像素，期间无敌。' },
+  arc_aftershock: { name: '余震', desc: '电球爆炸后留下 3 秒电场，半径 56。每 0.5 秒脉冲造成 8 伤害，击碎软弹。' },
+  breacher_dragon: { name: '龙息', desc: '弹丸点燃油桶和地面，留下持续 2.5 秒的火焰。弹丸伤害 −20%。' },
+  breacher_recoil: { name: '反冲', desc: '换上高爆弹。独头弹伤害 +60%，后坐力增加 60 像素，后退期间无敌。' },
+  breacher_overload: { name: '过载', desc: '强行装下弹丸，进入狂暴模式：每发 15 颗弹丸，攻击距离 +20%。' },
   blade_return: { name: '原路奉还', desc: '弹回的子弹追踪头目，伤害 ×2。' },
-  blade_afterimage: { name: '残影', desc: '拔刀的斩线 0.5 秒后再斩一次（70% 伤害）。拔刀冷却 3 秒。' },
+  blade_afterimage: { name: '残影', desc: '拔刀的斩线 0.5 秒后再斩一次（该次拔刀 70% 伤害）。' },
+  blade_flow: { name: '心流', desc: '拔刀期间完美闪避，进入 1 秒心流：拔刀免蓄力、无冷却。心流内完美闪避刷新至 1 秒。' },
 };
 
 export const BOSS_TEXT: Record<BossId, { name: string; en: string; place: string }> = {
@@ -75,7 +83,36 @@ export const BOSS_TEXT: Record<BossId, { name: string; en: string; place: string
   octohydra: { name: '八头蛇', en: 'OCTOHYDRA', place: '下网 · 淹水机房' },
   kade: { name: '凯德主管', en: 'DIRECTOR KADE', place: 'Skyline 区 · 天台停机坪' },
   vesper: { name: '维斯珀', en: 'VESPER', place: '环线列车 · 车顶' },
+  kairo: { name: '校时员·刻洛', en: 'KAIRO', place: '下网 · 记忆备份站' },
+  fold: { name: '建筑师·折尺', en: 'FOLD', place: 'Skyline 区 · 模块建筑工地' },
 };
+
+export const KAIRO_TEXT = {
+  name: '校时员·刻洛', record: '封存回放', release: '释放回放', empty: '暂无回放', stored: '已封存',
+  breaker: '时间断路', coolant: '冷却喷流', paused: '回放暂停', rewind: '回溯',
+  phase2: '归档快门', phase3: '双重曝光', replay: '回放', captured: '封存',
+  recording: '录制轨迹', trace: '逆行残像', shutter: '归档快门', hand: '借秒钟摆', returnSpot: '归档位',
+  rush: '追秒连斩', haste: '时间加速', slow: '时间迟滞', synchronizing: '校时',
+  hint: '断路器恢复时间 · 快门回到旧位置 · 刀可切秒针',
+} as const;
+
+export const FOLD_TEXT = {
+  name: '建筑师·折尺', route: '调度平台', brake: '紧急制动', press: '启动压机', gate: '升降隔离闸',
+  moving: '平台移动', stopped: '制动', phase2: '双台拼接', phase3: '中心工作台',
+  rooms: ['切割间', '仓储间', '控制间', '装配间'] as const,
+  hint: '调度平台携带物体 · 冲锋撞隔墙会瘫痪 · 制动与压机可打断施工',
+} as const;
+
+export const DAFEYU_TEXT = {
+  name: '大肥鱼',
+  interact: '脑机接口升级',
+  title: '脑机接口',
+  talent: '天赋加点',
+  rule: '使用游戏代币升级脑机接口。',
+  pending: '待开发',
+  unavailable: '升级暂未开放',
+  close: '关闭',
+} as const;
 
 export const UI = {
   title: '逾期',
