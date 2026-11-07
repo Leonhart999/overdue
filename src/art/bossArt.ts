@@ -6,7 +6,8 @@ import { buildOctohydraArt } from './octohydra';
 import { buildKadeArt } from './kade';
 import { buildVesperArt } from './vesper';
 import { buildExpansionArt } from './expansion';
+import { buildWrenArt } from './wren';
 
 export function buildBossArt(): SheetSpec[] {
-  return [...buildLuxArt(), ...buildOctohydraArt(), ...buildKadeArt(), ...buildVesperArt(), ...buildExpansionArt(), ...buildCoverArt()];
+  return [...buildLuxArt(), ...buildOctohydraArt(), ...buildKadeArt(), ...buildVesperArt(), ...buildExpansionArt(), ...buildCoverArt(), ...buildWrenArt()];
 }

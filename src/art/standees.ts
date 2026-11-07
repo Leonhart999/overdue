@@ -19,6 +19,7 @@
  */
 import { C } from './palette';
 import { buildExpansionStandeeFrames } from './expansion';
+import { buildWrenStandeeFrames } from './actors/wrenStandee';
 import { grid, legend, type Legend } from './core/grid';
 import { Mask, PixBuf, type Pt } from './core/pixbuf';
 import { bayer, hash2 } from './core/rng';
@@ -35,6 +36,7 @@ export const STANDEE_H = 144;
 export const STANDEE_FOCUS: Record<string, { face: Pt; glow: Pt[] }> = {
   kairo: { face: [51, 40], glow: [[61, 40], [55, 103], [17, 53]] },
   fold: { face: [48, 49], glow: [[38, 49], [55, 127]] },
+  wren: { face: [53, 29], glow: [[46, 27], [46, 75]] }, // glows: AR monocle, chest cartridges
   echo: { face: [57, 46], glow: [[62, 47], [87, 88]] }, // glows: cyber eye, shoulder joint seam
   gearjaw: { face: [47, 37], glow: [[41, 37], [53, 37], [56, 136]] }, // last glow: P2 engine
   lux: { face: [55, 48], glow: [[26, 51], [58, 48]] },
@@ -1597,6 +1599,7 @@ export function buildStandeeArt(): SheetSpec[] {
     { name: 'vesper', buf: vesper(false) },
     { name: 'vesper_p2', buf: vesper(true) },
     ...buildExpansionStandeeFrames(),
+    ...buildWrenStandeeFrames(),
   ];
   return [{
     key: 'standee', group: 'Standees', frameW: W, frameH: H, columns: 6, frames,

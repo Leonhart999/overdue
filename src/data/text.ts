@@ -85,6 +85,7 @@ export const BOSS_TEXT: Record<BossId, { name: string; en: string; place: string
   vesper: { name: '维斯珀', en: 'VESPER', place: '环线列车 · 车顶' },
   kairo: { name: '校时员·刻洛', en: 'KAIRO', place: '下网 · 记忆备份站' },
   fold: { name: '建筑师·折尺', en: 'FOLD', place: 'Skyline 区 · 模块建筑工地' },
+  wren: { name: '潜网客·芮恩', en: 'WREN', place: '地下黑网吧 · 双层' },
 };
 
 export const KAIRO_TEXT = {
