@@ -4,7 +4,7 @@
 
 Top-down boss-rush roguelite. Only boss fights: every arena has things you can use against the boss, every weapon plays differently, and every cyberware part replaces one of your moves. Pixel art and audio are generated in code.
 
-Built from the assets of CHROME DEBT (`D:\AI\projects\chrome-debt`, tag `m1-paused`).
+Built from the pixel art engine and assets of CHROME DEBT.
 
 ## Bosses
 

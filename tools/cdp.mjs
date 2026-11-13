@@ -2,7 +2,7 @@
  * Headless client check over the Chrome DevTools Protocol (Node 22+: built-in WebSocket + fetch).
  *
  *   1. npm run dev                      (port 5174)
- *   2. msedge --headless=new --remote-debugging-port=9334 --user-data-dir=D:/AI/tmp/edge-od
+ *   2. msedge --headless=new --remote-debugging-port=9334 --user-data-dir=/tmp/edge-od
  *        --window-size=1280,720 --use-angle=swiftshader --enable-unsafe-swiftshader about:blank
  *   3. node tools/cdp.mjs [--port 9334] [--boss gearjaw] [--weapons riveter,arc] [--secs 20] [--flow]
  *

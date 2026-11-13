@@ -1,8 +1,11 @@
 node_modules/
 dist/
 screenshots/
+screenshots$n.png
 *.log
 releases/
+.npmrc
+CLAUDE.md
 # Local image conversion tools and user artwork
 /tools/pixel-tools/.venv/
 /tools/pixel-tools/vendor/
