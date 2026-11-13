@@ -11,6 +11,7 @@ import type { Arena, World } from '../world';
 import { ArchiveTime } from './archiveTime';
 import { ARCHIVE_LAYOUT } from './archiveLayout';
 import { ArchiveRush } from './archiveRush';
+import { ArchiveStop } from './archiveStop';
 import { copyMemory, drawMemory, MemoryCast, type MemoryPattern } from './archiveMemory';
 export type { MemoryPattern } from './archiveMemory';
 
@@ -47,7 +48,8 @@ class ArchiveDevice extends Body {
       h.team = 'player'; h.hitsPlayer = false; h.color = P.ice; h.marker = true;
       h.onActivate = () => {
         for (const b of w.bodies) if (!b.dead && b.team === 'enemy' && dist(x, y - 4, b.hx, b.hy) <= 76 + b.hr) {
-          w.damage(b, { dmg: 120, kind: 'shock', x: b.hx, y: b.hy, from: 'env', src: 'coolant', poise: 130 });
+          // 999 poise: the jet always staggers, whatever the tier's poise bar
+          w.damage(b, { dmg: 120, kind: 'shock', x: b.hx, y: b.hy, from: 'env', src: 'coolant', poise: 999 });
         }
         w.fx.smoke(x, y - 6, 18, P.ice, 6, 70); w.sfx('emp');
       };
@@ -96,10 +98,27 @@ export class ArchiveState {
   private travelled = 0;
   pending: MemoryCast[] = [];
   casts: MemoryCast[] = [];
+  stops: ArchiveStop[] = [];
+  /** Kairo's current pendulum-swing telegraph (read by the autopilot). */
+  swing: Hazard | null = null;
+  swingBack: Hazard | null = null;
+  /** Extra boss-clock seconds granted to each pending shutter replay so far (capped). */
+  private shutterGrace = new WeakMap<MemoryCast, number>();
   stored: MemoryPattern | null = null;
   pauseT = 0;
-  get busy(): boolean { return (!!this.rush && !this.rush.dead) || this.casts.some(c => !c.dead && !c.friendly); }
+  get busy(): boolean { return (!!this.rush && !this.rush.dead) || this.casts.some(c => !c.dead && !c.friendly) || this.stops.some(s => !s.dead); }
   get shutterPending(): boolean { return this.casts.some(c => !c.dead && !c.friendly && c.pattern.kind === 'shutter'); }
+  /** Hostile patterns alive now (originals, replays and stop-watches). */
+  get hostileCount(): number { return this.casts.filter(c => !c.dead && !c.friendly).length + this.stops.filter(s => !s.dead).length; }
+  /** Only delayed replays are running: a new original may be layered on top of one of them. */
+  get layerable(): boolean {
+    if (this.rush && !this.rush.dead) return false;
+    if (this.stops.some(s => !s.dead) || this.shutterPending) return false;
+    const hostile = this.casts.filter(c => !c.dead && !c.friendly);
+    return hostile.length === 1 && hostile[0].replay;
+  }
+  /** A stop-watch currently holds the player still. */
+  get stopping(): boolean { return this.stops.some(s => !s.dead && !s.warning); }
   constructor(private readonly w: World) {}
 
   cast(pattern: MemoryPattern, warn: number, friendly = false, replay = false): MemoryCast {
@@ -112,12 +131,27 @@ export class ArchiveState {
   record(pattern: MemoryPattern, delay = 3): void {
     this.pending = this.pending.filter(c => !c.dead);
     if (this.pending.length >= 2) return;
+    if (pattern.kind === 'shutter') delay = Math.max(delay, this.journey(pattern.x, pattern.y, pattern.r) * this.time.rates.boss);
     this.pending.push(this.cast(pattern, delay, false, true));
+  }
+  /** Real seconds the player needs to walk back inside an archive spot from where they stand now. */
+  journey(x: number, y: number, r: number): number {
+    const p = this.w.player;
+    // 1.3: detours around racks and devices; 0.8: reaction time.
+    const gap = Math.max(0, dist(p.x, p.y - 4, x, y) - r + 16) * 1.3;
+    return gap / (118 * Math.min(1, p.moveMul) * this.time.rates.player) + 0.8;
+  }
+  startStop(x: number, y: number, r: number, warn: number): ArchiveStop {
+    const s = new ArchiveStop(this, x, y, r, warn);
+    this.stops.push(s); this.w.objects.push(s);
+    this.w.sfx('telegraph');
+    return s;
   }
   clearHostile(): void {
     this.rush?.cancel();
     for (const c of this.casts) if (!c.friendly) c.cancel();
-    this.pending = [];
+    for (const s of this.stops) s.cancel();
+    this.pending = []; this.stops = [];
   }
   startRush(phase: number, pace: number): ArchiveRush {
     this.rush?.cancel();
@@ -135,7 +169,8 @@ export class ArchiveState {
   useRecord(w: World): boolean {
     if (w.boss?.dying) return false;
     if (!this.stored) {
-      const c = this.pending.filter(c => !c.dead).sort((a, b) => a.remaining - b.remaining)[0];
+      // Only a replay still in its countdown can be sealed; one already swinging plays out.
+      const c = this.pending.filter(c => !c.dead && !c.begun).sort((a, b) => a.remaining - b.remaining)[0];
       if (!c) { w.sfx('click', 0.4); return false; }
       this.stored = copyMemory(c.pattern); c.cancel();
       w.fx.ring(96, 126, 6, 28, P.cyan, 0.25, 2); w.sfx('recall');
@@ -165,10 +200,23 @@ export class ArchiveState {
     this.pauseT = Math.max(0, this.pauseT - dt);
     this.pending = this.pending.filter(c => !c.dead);
     this.casts = this.casts.filter(c => !c.dead);
+    this.stops = this.stops.filter(s => !s.dead);
+    // A shutter replay never closes before the player could walk back to it (a slow field
+    // started, or other pressure pushed them away); the extra time is capped at 3 boss seconds.
+    for (const c of this.pending) {
+      if (c.begun || c.pattern.kind !== 'shutter' || this.pauseT > 0) continue;
+      const need = this.journey(c.pattern.x, c.pattern.y, c.pattern.r) * this.time.rates.boss;
+      const granted = this.shutterGrace.get(c) ?? 0;
+      if (c.remaining < need && granted < 3) {
+        const add = Math.min(need - c.remaining, 3 - granted);
+        c.remaining += add; this.shutterGrace.set(c, granted + add);
+      }
+    }
     if (w.boss?.dying || w.state === 'lost' || w.state === 'won') {
       for (const c of this.casts) c.cancel();
+      for (const s of this.stops) s.cancel();
       this.rush?.cancel(); this.rush = null;
-      this.pending = []; this.stored = null;
+      this.pending = []; this.stops = []; this.stored = null;
     }
   }
   drawTop(g: Gfx): void {
@@ -195,6 +243,26 @@ export const archive: Arena = {
     const st = archiveOf(w);
     if (!st || st.pauseT > 0) return null;
     if (st.rush?.imminent(w)) return { x: w.player.x, y: w.player.y, jump: true };
+    // Step out of the pendulum swing late in its wind-up, as a player reacting to it would;
+    // with a return swing pending, clear its band as well.
+    const sw = st.swing, sb = st.swingBack;
+    const back = sb && !sb.dead && sb.warning && sb.warn - sb.t < 0.8 * w.bossRate ? sb : null;
+    if (sw && !sw.dead && sw.warning && sw.shape.k === 'circle' && sw.warn - sw.t < 0.35 * w.bossRate || back) {
+      const c = (back ?? sw)!.shape as { x: number; y: number; r: number; w?: number };
+      const out = back ? c.r + (c.w ?? 0) / 2 : c.r, d = dist(w.player.x, w.player.y - 4, c.x, c.y);
+      if (d < out + 10) {
+        const a = Math.atan2(w.player.y - 4 - c.y, w.player.x - c.x);
+        const [x, y] = w.clampToBounds(c.x + Math.cos(a) * (out + 30), c.y + 4 + Math.sin(a) * (out + 30), 20);
+        return { x, y, jump: false };
+      }
+    }
+    // Leave a closing stop-watch late (a reaction delay), not the moment it appears.
+    const stop = st.stops.find(s => s.warning && s.contains(w.player.x, w.player.y - 4, 10) && s.realLeft(w) < 0.3);
+    if (stop) {
+      const a = Math.atan2(w.player.y - 4 - stop.y, w.player.x - stop.x);
+      const [x, y] = w.clampToBounds(stop.x + Math.cos(a) * (stop.r + 30), stop.y + 4 + Math.sin(a) * (stop.r + 30), 20);
+      return { x, y, jump: false };
+    }
     const shutter = st.casts.find(c => !c.dead && !c.friendly && c.pattern.kind === 'shutter');
     if (shutter && shutter.pattern.kind === 'shutter') {
       const p = shutter.pattern;

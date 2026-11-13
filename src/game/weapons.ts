@@ -351,6 +351,8 @@ class ArcOrb extends Bullet {
   private oy = 0;
   private armed = 0;
   private mineLife = 8;
+  /** A stopped orb or mine lying on the floor rides moving floors; one stuck to a body follows it. */
+  get floorBound(): boolean { return this.stopped && !this.stuckTo; }
   constructor(x: number, y: number, private tx: number, private ty: number, private power: number, private mine: boolean, private p: Player, private aftershock: boolean) {
     super(x, y, 0, 0, 'player');
     const [nx, ny] = norm(tx - x, ty - y);
@@ -592,8 +594,8 @@ class Slug extends Bullet {
   constructor(x: number, y: number, vx: number, vy: number, p: Player, shells: number, private readonly explosive: boolean, rangeScale: number) {
     super(x, y, vx, vy, 'player');
     this.r = 4;
-    this.dmg = 40 * shells * p.dmgMul * (explosive ? 1.6 : 1);
-    this.poise = 15 * shells;
+    this.dmg = 32.5 * shells * p.dmgMul * (explosive ? 1.6 : 1);
+    this.poise = 12 * shells;
     this.armorBreak = 1;
     this.frame = 'slug';
     this.rotates = true;

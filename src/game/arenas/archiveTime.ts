@@ -17,7 +17,8 @@ export class ArchiveTime {
   mode: TimeMode = 'normal';
   charging: Exclude<TimeMode, 'normal'> | null = null;
   remaining = 0;
-  cooldown = 0.1;
+  // The opening field is ready as soon as combat starts; its wind-up remains telegraphed.
+  cooldown = 0;
   private chargeLength = 1;
   private skyTime = 10;
   private clockTime = 0;
@@ -54,11 +55,21 @@ export class ArchiveTime {
     this.cooldown = Math.max(this.cooldown, cooldown);
   }
 
+  /**
+   * A stagger, phase change or death ends a running field (or its charge). The next field may
+   * come 4 s after the boss is back; a stagger with no field running leaves the timer alone, so
+   * frequent staggers never lock the fight out of its time fields.
+   */
+  interrupt(): void {
+    if (this.mode !== 'normal' || this.charging) this.restore(4);
+  }
+
   update(w: World, dt: number): void {
     const boss = w.boss;
     if (w.state !== 'fight' || boss?.dying || boss?.staggered || boss?.inTransition) {
       // Do not spend the opening cooldown while the entrance runs.
-      this.restore(w.state === 'intro' ? this.cooldown : 7);
+      if (w.state === 'intro') this.restore(this.cooldown);
+      else this.interrupt();
       if (w.state === 'lost' || w.state === 'won') return;
     } else if (this.charging) {
       this.chargeTime = Math.max(0, this.chargeTime - dt);

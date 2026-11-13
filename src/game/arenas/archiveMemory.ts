@@ -5,6 +5,7 @@ import { clamp, dist, segDist } from '../../engine/math';
 import { JAM_SLOW } from '../boss';
 import type { Cable } from '../types';
 import type { World } from '../world';
+import { ARCHIVE_LAYOUT } from './archiveLayout';
 
 export interface TracePoint {
   x: number; y: number; z: number; frame: string;
@@ -14,7 +15,9 @@ export interface TracePoint {
 export type MemoryPattern =
   | { kind: 'trace'; x: number; y: number; path: TracePoint[]; duration: number; copies: number }
   | { kind: 'shutter'; x: number; y: number; r: number }
-  | { kind: 'hand'; x: number; y: number; r: number; a: number; sweep: number; duration: number };
+  | { kind: 'hand'; x: number; y: number; r: number; a: number; sweep: number; duration: number;
+      /** Half-width of the blade (default 5); the P2 minute hand is thicker. */
+      hw?: number; minute?: boolean };
 
 export function copyMemory(p: MemoryPattern): MemoryPattern {
   return p.kind === 'trace' ? { ...p, path: p.path.map(q => ({ ...q })) } : { ...p };
@@ -44,7 +47,7 @@ export function memoryTouches(p: MemoryPattern, x: number, y: number, r: number,
   if (p.kind === 'hand') {
     for (let i = 0; i <= samples; i++) {
       const a = p.a + p.sweep * clamp((from + (to - from) * i / samples) / p.duration, 0, 1);
-      if (segDist(x, y, p.x, p.y, p.x + Math.cos(a) * p.r, p.y + Math.sin(a) * p.r) <= 5 + r) return true;
+      if (segDist(x, y, p.x, p.y, p.x + Math.cos(a) * p.r, p.y + Math.sin(a) * p.r) <= (p.hw ?? 5) + r) return true;
     }
     return false;
   }
@@ -99,9 +102,9 @@ export function drawMemory(g: Gfx, p: MemoryPattern, color: number, quiet = fals
   } else if (p.kind === 'shutter') {
     if (!quiet) {
       // Conservative horizontal strips leave a true circular hole without a full-screen render texture.
-      const left = 24, right = 616;
-      for (let y = 56; y < 340; y += 12) {
-        const h = Math.min(12, 340 - y), closest = clamp(p.y, y, y + h), dy = Math.abs(closest - p.y);
+      const b = ARCHIVE_LAYOUT.bounds, left = b.x, right = b.x + b.w, bottom = b.y + b.h;
+      for (let y = b.y; y < bottom; y += 12) {
+        const h = Math.min(12, bottom - y), closest = clamp(p.y, y, y + h), dy = Math.abs(closest - p.y);
         const half = dy < p.r ? Math.sqrt(p.r * p.r - dy * dy) : 0;
         const x0 = clamp(p.x - half, left, right), x1 = clamp(p.x + half, left, right);
         g.rect(left, y, x0 - left, h, color, elapsed < 0 ? 0.1 : 0.55, 'floor');
@@ -123,7 +126,8 @@ export function drawMemory(g: Gfx, p: MemoryPattern, color: number, quiet = fals
     }
     const a = p.a + (elapsed < 0 ? 0 : p.sweep * clamp(elapsed / p.duration, 0, 1));
     const x = p.x + Math.cos(a) * p.r, y = p.y + Math.sin(a) * p.r;
-    g.line(p.x, p.y, x, y, elapsed < 0 || quiet ? 1 : 10, color, quiet ? 0.25 : 0.8, 'top');
+    g.line(p.x, p.y, x, y, elapsed < 0 || quiet ? 1 : (p.hw ?? 5) * 2, color, quiet ? 0.25 : 0.8, 'top');
+    if (p.minute && !quiet) g.ring(x, y, 4, 1, P.white, 0.8, 'top');
     if (!quiet) {
       g.line(p.x, p.y, x, y, elapsed < 0 ? 1 : 2, P.white, 0.8, 'top');
       g.circle(p.x, p.y, 7, P.amber, 0.85, 'top');
@@ -149,6 +153,8 @@ export class MemoryCast {
   completed = false;
   elapsed = 0;
   private started = false;
+  /** True once the attack has left its warning (a sealed replay must not be mid-swing). */
+  get begun(): boolean { return this.started; }
   private playerHit = false;
   private hitIds = new Set<number>();
   private cable: Cable | null = null;
@@ -215,8 +221,8 @@ export class MemoryCast {
     drawMemory(g, this.pattern, color, false, this.started ? this.elapsed : -1);
     if (!this.started) {
       const p = this.pattern;
-      const title = p.kind === 'trace' ? T.trace : p.kind === 'hand' ? T.hand : T.shutter;
-      const y = p.kind === 'shutter' ? p.y + p.r + 8 : p.kind === 'hand' ? p.y - 24 : p.path[p.path.length - 1].y + 22;
+      const title = p.kind === 'trace' ? T.trace : p.kind === 'hand' ? (p.minute ? T.minute : T.hand) : T.shutter;
+      const y = p.kind === 'shutter' ? p.y + p.r + 8 : p.kind === 'hand' ? p.y - (p.minute ? 38 : 24) : p.path[p.path.length - 1].y + 22;
       const x = p.kind === 'trace' ? p.path[p.path.length - 1].x : p.x;
       g.crisp(`${this.replay ? T.replay + ' ' : ''}${title} ${Math.max(0, this.remaining / (this.friendly ? 1 : rate)).toFixed(1)}`, clamp(x, 110, 530), clamp(y, 72, 322),
         { color, align: 'center', layer: 'top' });

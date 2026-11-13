@@ -94,14 +94,16 @@ export const KAIRO_TEXT = {
   phase2: '归档快门', phase3: '双重曝光', replay: '回放', captured: '封存',
   recording: '录制轨迹', trace: '逆行残像', shutter: '归档快门', hand: '借秒钟摆', returnSpot: '归档位',
   rush: '追秒连斩', haste: '时间加速', slow: '时间迟滞', synchronizing: '校时',
+  stop: '停表', frozen: '停住', minute: '分针',
+  guard: '校时护摆', exposed: '失步',
   hint: '断路器恢复时间 · 快门回到旧位置 · 刀可切秒针',
 } as const;
 
 export const FOLD_TEXT = {
-  name: '建筑师·折尺', route: '调度平台', brake: '紧急制动', press: '启动压机', gate: '升降隔离闸',
-  moving: '平台移动', stopped: '制动', phase2: '双台拼接', phase3: '中心工作台',
+  name: '建筑师·折尺', route: '合拢通道', brake: '紧急制动', press: '启动压机',
+  moving: '房间合拢', stopped: '制动', hop: '吊运', cut: '吊索切断', phase2: '双轴轨道', phase3: '整线合拢',
   rooms: ['切割间', '仓储间', '控制间', '装配间'] as const,
-  hint: '调度平台携带物体 · 冲锋撞隔墙会瘫痪 · 制动与压机可打断施工',
+  hint: '合拢时站上房间 · 冲锋撞立柱或钢梁会瘫痪 · 刀可切吊索',
 } as const;
 
 export const DAFEYU_TEXT = {

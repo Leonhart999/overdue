@@ -69,18 +69,43 @@ function device(kind: string, live: boolean): PixBuf {
 }
 
 function foundryBackground(): PixBuf {
+  // Layout matches arenas/foundry.ts: rooms at x 88/512, y 112/376 (280x168), hub 368..512 x 280..376.
   const w = 880, h = 608;
   const b = new PixBuf(w, h).fill(C.night);
   b.rect(16, 48, w - 32, h - 64, C.umber);
-  for (let y = 56; y < h - 16; y += 24) for (let x = 24; x < w - 16; x += 24) {
+  for (let y = 56; y < h - 24; y += 24) for (let x = 24; x < w - 24; x += 24) {
     b.rect(x, y, 23, 23, (x + y) % 48 ? C.night : C.navy);
     b.set(x + 2, y + 2, C.slate);
   }
   b.rect(16, 40, w - 32, 16, C.slate); b.hline(16, w - 17, 55, C.fog);
+  for (let x = 40; x < w - 40; x += 48) { b.rect(x, 43, 20, 6, C.navy); b.rect(x + 2, 44, 16, 2, C.steel); }
   b.rect(8, 40, 8, h - 48, C.ink); b.rect(w - 16, 40, 8, h - 48, C.ink);
-  for (const y of [92, 268, 348, 524]) { b.hline(24, 855, y, C.steel); b.hline(24, 855, y + 3, C.ink); }
-  for (let y = 64; y < 584; y += 24) { b.rect(428, y, 4, 12, C.sodium); b.rect(448, y + 12, 4, 12, C.sodium); }
-  b.rect(392, 48, 96, 11, C.orange);
+  // horizontal rails for the two rows (the rooms close the vertical corridor along them)
+  for (const ry of [112, 376]) for (const dy of [40, 128]) {
+    const y = ry + dy;
+    for (let x = 92; x < 790; x += 12) b.rect(x, y - 3, 4, 8, C.umber);
+    b.hline(88, 791, y, C.steel); b.hline(88, 791, y + 1, C.fog); b.hline(88, 791, y + 2, C.ink);
+  }
+  // vertical rails for the two columns (they close the horizontal corridor)
+  for (const cx of [88, 512]) for (const dx of [60, 220]) {
+    const x = cx + dx;
+    for (let y = 116; y < 542; y += 12) b.rect(x - 3, y, 8, 4, C.umber);
+    b.vline(x, 112, 543, C.steel); b.vline(x + 1, 112, 543, C.fog); b.vline(x + 2, 112, 543, C.ink);
+  }
+  // hazard stripes where the rooms meet when a corridor closes
+  for (const ry of [112, 376]) for (let y = ry; y < ry + 168; y += 8) {
+    b.rect(436, y, 8, 4, C.sodium); b.rect(436, y + 4, 8, 4, C.ink);
+  }
+  for (const cx of [88, 512]) for (let x = cx; x < cx + 280; x += 8) {
+    b.rect(x, 324, 4, 8, C.sodium); b.rect(x + 4, 324, 4, 8, C.ink);
+  }
+  // hub: press plate
+  b.rect(372, 284, 136, 88, C.slate); b.rect(376, 288, 128, 80, C.navy);
+  for (let y = 288; y < 368; y++) for (let x = 376; x < 504; x++) if ((x + y) % 12 === 0) b.set(x, y, C.indigo);
+  for (let x = 372; x < 508; x += 8) { b.rect(x, 284, 4, 3, C.amber); b.rect(x + 4, 369, 4, 3, C.amber); }
+  for (let y = 284; y < 372; y += 8) { b.rect(372, y, 3, 4, C.amber); b.rect(505, y + 4, 3, 4, C.amber); }
+  // device pads: brake (top margin) and press console (bottom margin)
+  for (const [x, y] of [[440, 84], [440, 566]]) { b.circle(x, y, 13, C.slate); b.ring(x, y, 13, C.amber, 1); }
   return b;
 }
 
@@ -90,10 +115,17 @@ function room(index: number): PixBuf {
   for (let y = 22; y < 158; y += 16) for (let x = 8; x < 272; x += 16) {
     b.rect(x, y, 15, 15, (x + y) % 32 ? C.indigo : C.navy); b.set(x + 2, y + 2, C.slate);
   }
-  b.rect(12, 10, 256, 10, C.steel); b.hline(12, 267, 10, C.pale);
+  // back wall in two panels with a doorway (collision: x 12..110 and 170..268, y 10..20)
+  for (const x0 of [12, 170]) {
+    b.rect(x0, 10, 98, 10, C.steel); b.hline(x0, x0 + 97, 10, C.pale); b.hline(x0, x0 + 97, 19, C.slate);
+    for (let x = x0 + 6; x < x0 + 96; x += 14) b.set(x, 15, C.ink);
+  }
+  for (let x = 112; x < 168; x += 8) { b.rect(x, 12, 4, 6, C.amber); b.rect(x + 4, 12, 4, 6, C.ink); }
   for (let x = 8; x < 272; x += 16) { b.rect(x, 158, 8, 4, C.orange); b.rect(x + 8, 158, 8, 4, C.ink); }
   const col = [C.cyan, C.amber, C.acid, C.magenta][index];
-  b.rect(10, 26, 4, 116, col); b.rect(258, 26, 4, 116, col);
+  b.rect(2, 26, 4, 116, col); b.rect(274, 26, 4, 116, col);
+  // rail wheels on every edge
+  for (const [x, y] of [[0, 34], [0, 126], [272, 34], [272, 126]]) { b.rect(x, y, 8, 8, C.ink); b.rect(x + 2, y + 2, 4, 4, C.steel); }
   b.rect(22, 29, 30, 15, C.ink);
   for (let i = 0; i <= index; i++) b.rect(26 + i * 6, 33, 3, 7, col);
   return b;
