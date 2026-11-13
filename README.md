@@ -2,24 +2,48 @@
 
 ![cover](docs/cover.png)
 
+**[▶ Play Online in Your Browser (GitHub Pages)](https://leonhart999.github.io/overdue/)** — no installation required (desktop Chrome / Edge with WebGL recommended).
+
 Top-down boss-rush roguelite. Only boss fights: every arena has things you can use against the boss, every weapon plays differently, and every cyberware part replaces one of your moves. Pixel art and audio are generated in code.
 
 Built from the pixel art engine and assets of CHROME DEBT.
 
+## Screenshots
+
+| Hub (`据点`) | Boss Intro |
+|---|---|
+| ![Hub](docs/screenshots/hub.png) | ![Boss Intro](docs/screenshots/versus.png) |
+
+| Gearjaw — Scrapyard Compactor | Madame Lux — Neon Bazaar Club |
+|---|---|
+| ![Gearjaw](docs/screenshots/boss-gearjaw.png) | ![Madame Lux](docs/screenshots/boss-lux.png) |
+
+| Octohydra — Flooded Server Room | Kairo — Memory Backup Station |
+|---|---|
+| ![Octohydra](docs/screenshots/boss-octohydra.png) | ![Kairo](docs/screenshots/boss-kairo.png) |
+
 ## Bosses
+
+Each run draws four bosses from the eight available:
 
 | Boss | Arena | Use the arena |
 |---|---|---|
-| Gearjaw 齿颚 | Rustport scrapyard | crane drop (levers), barrels, ram him into pillars |
-| Madame Lux 卢克丝夫人 | Neon Bazaar club | breakers (blackout), projectors (clones), mirrors (reflect her laser) |
+| Gearjaw 齿颚 | Rustport compactor yard | crane drop (levers), barrels, ram him into pillars |
+| Madame Lux 卢克丝夫人 | Neon Bazaar club | breakers (blackout), projectors (clones), turntable & mirrors (reflect her laser) |
 | Octohydra 八头蛇 | Undernet flooded server room | conduits electrify the water and cauterise stumps, racks block beams |
 | Director Kade 凯德主管 | Skyline rooftop helipad | hack turrets, helicopter downdraft and crash, break searchlights, hit him behind the shield |
+| Vesper 维斯珀 | Loop line moving train roof | hide behind cover, deflect sniper rounds, trap her at gantries and electrified cars |
+| Kairo 校时员·刻洛 | Undernet memory backup station | time breakers & coolant jets, rewind shutters, cut his second hand with the blade |
+| Fold 建筑师·折尺 | Skyline modular construction site | ride sliding rooms, bait charges into pillars/beams, hit emergency brake or cut crane cables |
+| Wren 潜网客·芮恩 | Underground dive cafe (reality & net) | dive into pods to break firewall ports powering her shield across two layers |
 
 Standees: `standee-preview.html`.
 
 ## Play
 
-Runs start and end in the hub (据点): weapon racks, a practice cyberware bench, a training dummy and turret, and the exit elevator.
+Play online at **https://leonhart999.github.io/overdue/**, or run locally:
+
+Runs start and end in the hub (据点): armory wall, practice cyberware bench, records, training dummy and turret, boss simulator, and the exit elevator.
 
 Double-click `play.bat`: it builds a snapshot and serves it at http://127.0.0.1:5180/ without file watching, so edits to the code never restart the game you are playing (run it again to get the latest version). `dev.bat` / `npm run dev` is the hot-reload development server at http://127.0.0.1:5174/; it reloads the page whenever a source file is saved.
 
@@ -30,7 +54,7 @@ WASD move · mouse aim · LMB attack · RMB weapon special · Space dash (legs) 
 - `npm test` — art build + headless bot fights for every boss and weapon
 - `npm run typecheck`
 - Dev URL: `/?boss=gearjaw&weapon=arc&cyber=legs_leap,arm_fist&bot&god`
-- New bosses: `/?boss=kairo` (校时员·刻洛, memory archive) and `/?boss=fold` (建筑师·折尺, sliding rooms); both are also in the hub simulator. Each run still draws four bosses from the seven available.
+- Jump directly to any boss with `?boss=<id>` (`gearjaw`, `lux`, `octohydra`, `kade`, `vesper`, `kairo`, `fold`, `wren`) or open the hub with `?hub`
 - `node tools/cdp.mjs` — headless Edge run with screenshots and console-error check (`tools/cdp-hub.mjs` for the hub)
 - `/?cover` renders the cover only (exported to `docs/cover.png`, `docs/cover_1920.png`)
 
